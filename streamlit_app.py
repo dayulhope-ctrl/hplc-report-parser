@@ -100,9 +100,12 @@ def _run_amino_acid(std_files, sp_files):
     with st.spinner("검액 PDF 파싱 중..."):
         for f in sp_files:
             try:
-                lots = parse_sp(f)
+                lots, dbg = parse_sp(f, debug=True)
                 for lot_id, lot_data in lots.items():
                     all_lots.setdefault(lot_id, {}).update(lot_data)
+                if not lots:
+                    with st.expander(f"🔍 파싱 디버그 ({f.name})", expanded=True):
+                        st.code("\n".join(dbg) if dbg else "(블록 없음)")
             except Exception as e:
                 st.error(f"검액 파싱 오류 ({f.name}): {e}"); return
 

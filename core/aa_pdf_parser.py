@@ -104,7 +104,7 @@ def parse_std(file_obj):
     return runs, resolutions
 
 
-def parse_sp(file_obj):
+def parse_sp(file_obj, debug: bool = False):
     """
     SP(검액) PDF 파싱.
 
@@ -113,22 +113,31 @@ def parse_sp(file_obj):
     lots : dict
         { lot_id: { sample_num: {aa_name: area} } }
         예) {"26001A": {1: {...}, 2: {...}}, "26001B": {...}}
+    debug_info : list[str]  (debug=True일 때만 반환, 아니면 빈 리스트)
     """
     text = _extract_text(file_obj)
     lots: dict = {}
+    dbg: list[str] = []
 
-    for block in re.split(r"All Signals Result Table", text)[1:]:
+    blocks = re.split(r"All Signals Result Table", text)
+    if debug:
+        dbg.append(f"블록 수(헤더 제외): {len(blocks)-1}")
+
+    for bi, block in enumerate(blocks[1:], 1):
         sample_id = _table_sample_id(block)
+        if debug:
+            dbg.append(f"[블록{bi}] sample_id={repr(sample_id)}")
         if not sample_id:
             continue
 
-        # 패턴: Sol_26001A-1_19_37 / Sol_26001A-2 / Sol_26001A-1 (끝)
         m = re.search(r"Sol_([A-Za-z0-9]+)-(\d+)", sample_id)
         if not m:
+            if debug:
+                dbg.append(f"  → Sol_ 패턴 불일치: {repr(sample_id)}")
             continue
 
-        lot_id     = m.group(1)       # e.g. "26001A"
-        sample_num = int(m.group(2))  # 1 or 2
+        lot_id     = m.group(1)
+        sample_num = int(m.group(2))
 
         areas = {}
         for line in block.splitlines():
@@ -137,7 +146,12 @@ def parse_sp(file_obj):
                 aa, area, _ = result
                 areas[aa] = area
 
+        if debug:
+            dbg.append(f"  → lot={lot_id} sample={sample_num} AA수={len(areas)} {list(areas.keys())}")
+
         if len(areas) >= 5:
             lots.setdefault(lot_id, {})[sample_num] = areas
+        elif debug:
+            dbg.append(f"  → AA 5개 미만으로 스킵")
 
-    return lots
+    return (lots, dbg) if debug else lots
