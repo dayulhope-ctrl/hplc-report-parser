@@ -45,21 +45,45 @@ def _c(ws, row, col, value=None, *,
     return c
 
 
-def _merged_header(ws, row, c1, c2, value, fn):
+_mc_style_cache: dict = {}   # fill_key → MergedCell용 _style 인덱스
+
+
+def _mc_right_style(ws, fill):
+    """MergedCell에 적용할 right+top+bottom border _style 인덱스 반환 (캐시)."""
+    key = fill.fgColor.rgb if fill else "none"
+    if key not in _mc_style_cache:
+        tmp_r, tmp_c = 9990 + len(_mc_style_cache), 9999
+        tmp = ws.cell(row=tmp_r, column=tmp_c)
+        tmp.border = Border(right=_T, top=_T, bottom=_T)
+        if fill:
+            tmp.fill = fill
+        _mc_style_cache[key] = tmp._style
+        ws._cells.pop((tmp_r, tmp_c), None)   # 임시 셀 제거
+    return _mc_style_cache[key]
+
+
+def _twin(ws, row, c1, c2, value, fn, fill=None, bold=False):
     """
-    두 열(c1, c2)을 병합한 헤더 셀 작성.
-    문자열 범위 방식(A1:B1)으로 merge_cells 호출 — 모든 openpyxl 버전 호환.
-    마스터 셀(c1)에 전체 테두리를 한 번에 적용한다.
+    c1:c2 병합 + 완전한 테두리.
+    - 마스터 셀(c1): left·top·bottom border + fill + value
+    - MergedCell(c2): _style 직접 설정으로 right·top·bottom border + fill 적용
     """
     c1_letter = get_column_letter(c1)
     c2_letter = get_column_letter(c2)
     ws.merge_cells(f"{c1_letter}{row}:{c2_letter}{row}")
 
     tl = ws.cell(row=row, column=c1, value=value)
-    tl.font      = Font(name=fn, size=FS, bold=True)
+    tl.font      = Font(name=fn, size=FS, bold=bold)
     tl.alignment = Alignment(horizontal="center", vertical="center")
-    tl.fill      = FILL_HEADER
-    tl.border    = Border(left=_T, right=_T, top=_T, bottom=_T)
+    tl.border    = Border(left=_T, top=_T, bottom=_T)
+    if fill:
+        tl.fill = fill
+
+    mc = ws._cells.get((row, c2))
+    if mc is not None:
+        mc._style = _mc_right_style(ws, fill)
+
+    return tl
 
 
 def _calc_rsd(values: list):
@@ -119,59 +143,53 @@ def _sheet_sst(wb, resolutions: list[dict]):
 
 
 # ══════════════════════════════════════════════════════════════════
-# 시트 2 : 표준액 면적  (맑은 고딕 14 / AA당 2열)
-# col A = 행 레이블
-# col 2+i*2     = 값
-# col 2+i*2+1   = %RSD행에서 판정, 나머지 행에서 빈칸
+# 시트 2 : 표준액 면적  (맑은 고딕 14 / AA당 2열 전체 병합)
+# 모든 행(헤더·런·평균·%RSD)에서 AA당 c1:c1+1 병합
+# 판정 열 없음 — %RSD 셀 색상(초록/빨강)으로 적합 여부 표시
 # ══════════════════════════════════════════════════════════════════
 def _write_std_group(ws, start_row: int, group_aas: list, runs: list) -> int:
     """그룹 하나 작성. 다음 시작 행 반환."""
 
-    # ─ 행 레이블 열(A) 헤더칸
     _c(ws, start_row, 1, "", fill=FILL_HEADER)
 
-    # ─ AA 헤더 (2열 병합) — 내부선 없이
     for i, aa in enumerate(group_aas):
         c1 = 2 + i * 2
-        _merged_header(ws, start_row, c1, c1 + 1, aa, FN_DATA)
+        _twin(ws, start_row, c1, c1 + 1, aa, FN_DATA, fill=FILL_HEADER, bold=True)
 
-    # ─ 런 1~6
     for ri, run_data in enumerate(runs[:6]):
         r = start_row + 1 + ri
         _c(ws, r, 1, str(ri + 1), fill=FILL_GRAY, bold=True)
         for i, aa in enumerate(group_aas):
             c1 = 2 + i * 2
             val = run_data.get(aa)
-            _c(ws, r, c1,     round(val, 3) if val is not None else "", fill=FILL_DATA)
-            _c(ws, r, c1 + 1, "",                                        fill=FILL_DATA)
+            _twin(ws, r, c1, c1 + 1,
+                   round(val, 3) if val is not None else "", FN_DATA, fill=FILL_DATA)
 
-    # ─ 평균
     avg_r = start_row + 7
     _c(ws, avg_r, 1, "평균", fill=FILL_GRAY, bold=True)
     for i, aa in enumerate(group_aas):
         c1 = 2 + i * 2
         vals = [run[aa] for run in runs if aa in run]
         avg  = round(sum(vals) / len(vals), 3) if vals else ""
-        _c(ws, avg_r, c1,     avg, fill=FILL_DATA)
-        _c(ws, avg_r, c1 + 1, "",  fill=FILL_DATA)
+        _twin(ws, avg_r, c1, c1 + 1, avg, FN_DATA, fill=FILL_DATA)
 
-    # ─ %RSD
     rsd_r = start_row + 8
     _c(ws, rsd_r, 1, "%RSD", fill=FILL_GRAY, bold=True)
     for i, aa in enumerate(group_aas):
         c1 = 2 + i * 2
         vals = [run[aa] for run in runs if aa in run]
         rsd  = _calc_rsd(vals)
-        _c(ws, rsd_r, c1, round(rsd, 1) if rsd is not None else "", fill=FILL_DATA)
-
         if rsd is None:
-            _c(ws, rsd_r, c1 + 1, "N/A")
+            rsd_fill = FILL_DATA
         elif rsd <= 2.0:
-            _c(ws, rsd_r, c1 + 1, "적합",   fill=FILL_PASS, bold=True)
+            rsd_fill = FILL_PASS
         else:
-            _c(ws, rsd_r, c1 + 1, "부적합", fill=FILL_FAIL, bold=True)
+            rsd_fill = FILL_FAIL
+        _twin(ws, rsd_r, c1, c1 + 1,
+               round(rsd, 1) if rsd is not None else "", FN_DATA,
+               fill=rsd_fill, bold=(rsd is not None))
 
-    return rsd_r + 2   # 빈 행 1줄 두고 다음 그룹
+    return rsd_r + 2
 
 
 def _sheet_std_area(wb, runs: list[dict]):
@@ -179,8 +197,9 @@ def _sheet_std_area(wb, runs: list[dict]):
 
     ws.column_dimensions["A"].width = 8
     for i in range(len(AA_ORDER)):
-        ws.column_dimensions[get_column_letter(2 + i * 2)    ].width = 14  # 값 열
-        ws.column_dimensions[get_column_letter(2 + i * 2 + 1)].width = 7   # 판정 열
+        # 두 열 합산 너비를 값 열 하나에 설정 (판정 열 제거로 시각 보정)
+        ws.column_dimensions[get_column_letter(2 + i * 2)    ].width = 14
+        ws.column_dimensions[get_column_letter(2 + i * 2 + 1)].width = 7
 
     groups = [AA_ORDER[:5], AA_ORDER[5:10], AA_ORDER[10:]]
     cur = 1
@@ -191,30 +210,27 @@ def _sheet_std_area(wb, runs: list[dict]):
 
 
 # ══════════════════════════════════════════════════════════════════
-# 시트 3+ : 검액 면적  (맑은 고딕 14 / AA당 2열)
-# 표준액과 동일 2열 구조 / 두 번째 열은 빈칸
+# 시트 3+ : 검액 면적  (맑은 고딕 14 / AA당 2열 전체 병합)
 # ══════════════════════════════════════════════════════════════════
 def _write_sp_group(ws, start_row: int, group_aas: list, lot_data: dict) -> int:
     """검액 그룹 하나 작성. 다음 시작 행 반환."""
 
     _c(ws, start_row, 1, "", fill=FILL_HEADER)
 
-    # AA 헤더 (2열 병합) — 내부선 없이
     for i, aa in enumerate(group_aas):
         c1 = 2 + i * 2
-        _merged_header(ws, start_row, c1, c1 + 1, aa, FN_DATA)
+        _twin(ws, start_row, c1, c1 + 1, aa, FN_DATA, fill=FILL_HEADER, bold=True)
 
-    # Sample 1 / Sample 2
     for s in (1, 2):
         r = start_row + s
         _c(ws, r, 1, f"Sample {s}", fill=FILL_GRAY, bold=True)
         for i, aa in enumerate(group_aas):
             c1 = 2 + i * 2
             val = lot_data.get(s, {}).get(aa)
-            _c(ws, r, c1,     round(val, 3) if val is not None else "", fill=FILL_DATA)
-            _c(ws, r, c1 + 1, "",                                        fill=FILL_DATA)
+            _twin(ws, r, c1, c1 + 1,
+                   round(val, 3) if val is not None else "", FN_DATA, fill=FILL_DATA)
 
-    return start_row + 4   # 데이터 3행 + 빈 1행
+    return start_row + 4
 
 
 def _sheet_sp(wb, lot_id: str, lot_data: dict):
@@ -237,6 +253,9 @@ def _sheet_sp(wb, lot_id: str, lot_data: dict):
 # 진입점
 # ══════════════════════════════════════════════════════════════════
 def write_aa_result(runs: list, resolutions: list, lots: dict) -> bytes:
+    global _mc_style_cache
+    _mc_style_cache = {}   # 워크북마다 스타일 인덱스 초기화
+
     wb = openpyxl.Workbook()
     wb.remove(wb.active)
 
