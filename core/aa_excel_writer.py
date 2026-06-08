@@ -48,10 +48,12 @@ def _c(ws, row, col, value=None, *,
 def _merged_header(ws, row, c1, c2, value, fn):
     """
     두 열(c1, c2)을 병합한 헤더 셀 작성.
-    openpyxl MergedCell은 border 설정이 파일에 반영되지 않으므로
+    문자열 범위 방식(A1:B1)으로 merge_cells 호출 — 모든 openpyxl 버전 호환.
     마스터 셀(c1)에 전체 테두리를 한 번에 적용한다.
     """
-    ws.merge_cells(start_row=row, start_column=c1, end_row=row, end_column=c2)
+    c1_letter = get_column_letter(c1)
+    c2_letter = get_column_letter(c2)
+    ws.merge_cells(f"{c1_letter}{row}:{c2_letter}{row}")
 
     tl = ws.cell(row=row, column=c1, value=value)
     tl.font      = Font(name=fn, size=FS, bold=True)
