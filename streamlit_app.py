@@ -1,101 +1,19 @@
 # -*- coding: utf-8 -*-
-import sys, json, os, tempfile, math, io, shutil
+import sys, json, os, tempfile
 from pathlib import Path
 import streamlit as st
 import pandas as pd
-import openpyxl
-from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
-from openpyxl.utils import get_column_letter
 
 BASE_DIR   = Path(__file__).parent
 CONFIG_DIR = BASE_DIR / "config"
-AA_DIR     = Path(r"C:\Users\user\Downloads\파워라센 아미노산 함량")
 
 sys.path.insert(0, str(BASE_DIR))
-sys.path.insert(0, str(AA_DIR))
 
 st.set_page_config(page_title="면적값 자동파싱 시스템", layout="wide", initial_sidebar_state="collapsed")
 
 # ══════════════════════════════════════════════════════════════════
 # 분석 함수들
 # ══════════════════════════════════════════════════════════════════
-
-def _run_id(product, spa_file, spb_file, spc_file):
-    from core.id_parser import parse_id_pdf, compute_rrt, judge_rrt
-    from core.excel_writer import write_id_result
-
-    form_type   = "환" if product == "환제" else "현"
-    config_file = CONFIG_DIR / ("csw_pill.json" if form_type == "환" else "csw_hyeon.json")
-    with open(config_file, encoding="utf-8") as f:
-        config = json.load(f)
-
-    compounds = config["compounds_id"]
-    ref_comp  = config["id_reference_compound"]
-    tolerance = config["id_rrt_tolerance"]
-
-    all_sample_data = {}
-    with st.spinner("PDF 파싱 중..."):
-        for label, upfile in [("A", spa_file), ("B", spb_file), ("C", spc_file)]:
-            if upfile is None:
-                continue
-            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-                tmp.write(upfile.read()); tmp_path = tmp.name
-            try:
-                parsed = parse_id_pdf(tmp_path)
-                for sn, sdata in parsed.items():
-                    all_sample_data[sn] = compute_rrt(sdata, ref_comp)
-            finally:
-                os.unlink(tmp_path)
-
-    if not all_sample_data:
-        st.error("PDF에서 데이터를 추출하지 못했습니다."); return
-
-    sample_names = list(all_sample_data.keys())
-    st.success(f"추출 완료: {len(sample_names)}개 시료 — {', '.join(sample_names)}")
-
-    result_rows = []
-    for comp_cfg in compounds:
-        comp_name = comp_cfg["name"]
-        rrt_exp   = comp_cfg["rrt_expected"]
-        is_ref    = comp_cfg.get("is_reference", False)
-        sample_results = {}
-        for sn in sample_names:
-            sdata   = all_sample_data[sn]
-            matched = next((sdata[k] for k in sdata if k.startswith(comp_name)), None)
-            if matched:
-                rrt_c  = matched.get("rrt_calc")
-                result = "기준" if is_ref else (judge_rrt(rrt_c, rrt_exp, tolerance) if rrt_c else "N/A")
-                sample_results[sn] = {"rt": matched.get("rt"), "sn": matched.get("sn"),
-                                      "rrt_calc": rrt_c, "result": result}
-            else:
-                sample_results[sn] = {"rt": None, "sn": None, "rrt_calc": None, "result": "미검출"}
-        result_rows.append({"compound": comp_name, "transitions": comp_cfg["transitions"],
-                            "rrt_expected": rrt_exp, "samples": sample_results})
-
-    summary = []
-    for row in result_rows:
-        r = {"성분": row["compound"], "RRT 기준": row["rrt_expected"]}
-        for sn in sample_names: r[sn] = row["samples"][sn].get("result", "-")
-        summary.append(r)
-
-    df = pd.DataFrame(summary)
-    def color_result(val):
-        if val in ("적합","기준"): return "background-color:#C6EFCE"
-        if val == "부적합":        return "background-color:#FFC7CE"
-        return ""
-    st.dataframe(df.style.applymap(color_result, subset=sample_names),
-                 use_container_width=True, hide_index=True)
-
-    fails = [f"{r['성분']}({sn})" for r in summary for sn in sample_names if r.get(sn) == "부적합"]
-    if fails: st.warning(f"부적합: {', '.join(fails)}")
-    else:     st.success("전 항목 적합")
-
-    excel = write_id_result(result_rows, lot_info=product)
-    st.download_button("📥 결과 엑셀 다운로드", data=excel,
-                       file_name=f"{product}_확인결과.xlsx",
-                       mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                       type="primary", use_container_width=True)
-
 
 def _run_id_csv(product, sst_file, spa_file, spb_file, spc_file):
     from core.id_csv_parser import parse_sp_csv, parse_sst_csv
@@ -157,63 +75,46 @@ def _run_as(product, as_files):
                        type="primary", use_container_width=True)
 
 
-def _run_amino_acid(std_file, sp_file):
-    TEMPLATE = AA_DIR / "아미노산_함량_분석_양식.xlsx"
-    if not TEMPLATE.exists():
-        st.error(f"양식 파일 없음: {TEMPLATE}"); return
+def _run_amino_acid(std_files, sp_files):
+    from core.aa_pdf_parser import parse_std, parse_sp
+    from core.aa_excel_writer import write_aa_result
 
-    from parse_pdf import parse_both, validate_data
-    from fill_form import fill_form, find_std_area_cells as _find_std
-    from template_creator import build_lot_sheet
-    import json as _json
+    # ── STD 파싱 (여러 파일 병합 가능)
+    all_runs, all_res = [], []
+    with st.spinner("STD PDF 파싱 중..."):
+        for f in std_files:
+            try:
+                runs, ress = parse_std(f)
+                all_runs.extend(runs)
+                all_res.extend(ress)
+            except Exception as e:
+                st.error(f"STD 파싱 오류 ({f.name}): {e}"); return
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmpdir = Path(tmpdir)
-        std_path = tmpdir/"STD.pdf"; std_path.write_bytes(std_file.read())
-        sp_path  = tmpdir/"SP.pdf";  sp_path.write_bytes(sp_file.read())
+    if not all_runs:
+        st.error("STD PDF에서 데이터를 추출하지 못했습니다."); return
 
-        with st.spinner("PDF 파싱 중..."):
-            try:    data = parse_both(str(std_path), str(sp_path))
-            except Exception as e: st.error(f"파싱 오류: {e}"); return
+    st.success(f"STD {len(all_runs)}런 파싱 완료")
 
-        warns = validate_data(data)
-        if warns:
-            with st.expander(f"경고 {len(warns)}건"):
-                [st.warning(w) for w in warns[:30]]
-        else:
-            st.success("검증 통과")
+    # ── SP 파싱 (여러 파일 → lot 병합)
+    all_lots: dict = {}
+    with st.spinner("검액 PDF 파싱 중..."):
+        for f in sp_files:
+            try:
+                lots = parse_sp(f)
+                for lot_id, lot_data in lots.items():
+                    all_lots.setdefault(lot_id, {}).update(lot_data)
+            except Exception as e:
+                st.error(f"검액 파싱 오류 ({f.name}): {e}"); return
 
-        lot_names = sorted(data["lots"].keys())
-        st.info(f"감지된 Lot: {', '.join(lot_names)}")
+    if not all_lots:
+        st.error("검액 PDF에서 데이터를 추출하지 못했습니다."); return
 
-        with st.spinner("엑셀 생성 중..."):
-            out_path = tmpdir/"결과.xlsx"
-            shutil.copy2(TEMPLATE, out_path)
-            wb = openpyxl.load_workbook(str(out_path))
+    lot_names = sorted(all_lots.keys())
+    st.success(f"검액 Lot: {', '.join(lot_names)}")
 
-            std_avg_cells = {}
-            if "표준액(면적)" in wb.sheetnames:
-                for aa, addrs in _find_std(wb["표준액(면적)"]).items():
-                    if addrs:
-                        last = addrs[-1]
-                        col = ''.join(filter(str.isalpha, last))
-                        row = int(''.join(filter(str.isdigit, last))) + 1
-                        std_avg_cells[aa] = f"{col}{row}"
-
-            for lot in lot_names:
-                if lot not in wb.sheetnames:
-                    build_lot_sheet(wb, lot, std_avg_cells)
-            wb.save(str(out_path))
-
-            json_tmp = tmpdir/"_data.json"
-            with open(json_tmp,"w",encoding="utf-8") as f:
-                _json.dump(data, f, ensure_ascii=False)
-
-            try:    fill_form(str(out_path), str(json_tmp), str(out_path))
-            except Exception as e: st.error(f"엑셀 입력 오류: {e}"); return
-
-        st.success(f"완료! {len(lot_names)}개 Lot 생성")
-        excel_bytes = out_path.read_bytes()
+    # ── 엑셀 생성
+    with st.spinner("엑셀 생성 중..."):
+        excel_bytes = write_aa_result(all_runs, all_res, all_lots)
 
     st.download_button("📥 결과 엑셀 다운로드", data=excel_bytes,
                        file_name="아미노산_함량_결과.xlsx",
@@ -293,78 +194,49 @@ test_type = st.session_state.test_type
 
 if product == "아미노산":
     st.subheader("② PDF 파일 업로드  〔아미노산 함량〕")
-    st.caption("STD / SP 파일을 한 번에 선택하세요 (파일명에 STD, SP 포함)")
+    st.caption("STD PDF + 검액 PDF(Lot별)를 한 번에 선택하세요 — 파일명에 STD 포함 여부로 자동 분류")
     uploaded_aa = st.file_uploader("PDF 파일 선택 (복수 선택 가능)",
                                    type="pdf", accept_multiple_files=True, key="aa_multi")
-    std_file = sp_file = None
-    others = []
-    for f in (uploaded_aa or []):
-        n = f.name.upper()
-        if "STD" in n: std_file = f
-        elif "SP" in n: sp_file = f
-        else: others.append(f)
-    # STD가 아닌 미분류 파일 → SP로 처리
-    if sp_file is None and others:
-        sp_file = others[0]
+    std_files = [f for f in (uploaded_aa or []) if "STD" in f.name.upper()]
+    sp_files  = [f for f in (uploaded_aa or []) if "STD" not in f.name.upper()]
     if uploaded_aa:
-        cols = st.columns(2)
-        cols[0].success(f"✓ {std_file.name}" if std_file else "—"); cols[0].caption("STD")
-        cols[1].success(f"✓ {sp_file.name}"  if sp_file  else "—"); cols[1].caption("SP")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.caption("STD")
+            for f in std_files: st.success(f"✓ {f.name}")
+            if not std_files: st.warning("STD 파일 없음")
+        with col2:
+            st.caption("검액 (Lot)")
+            for f in sp_files: st.success(f"✓ {f.name}")
+            if not sp_files: st.warning("검액 파일 없음")
     if st.button("▶  분석 실행", type="primary",
-                 disabled=not(std_file and sp_file), use_container_width=True):
-        _run_amino_acid(std_file, sp_file)
+                 disabled=not(std_files and sp_files), use_container_width=True):
+        _run_amino_acid(std_files, sp_files)
 
 elif test_type == "확인":
-    if product == "환제":
-        st.subheader(f"③ CSV 파일 업로드  〔우황청심원 {product} 확인〕")
-        st.caption("SST / SP_A / SP_B / SP_C 파일을 한 번에 선택하세요 (파일명에 SST, SP_A, SP_B, SP_C 포함)")
-        uploaded = st.file_uploader("CSV 파일 선택 (복수 선택 가능)",
-                                    type="csv", accept_multiple_files=True,
-                                    key="id_csv_multi")
-        # 파일명으로 자동 분류
-        sst_file = spa_file = spb_file = spc_file = None
-        for f in (uploaded or []):
-            n = f.name.upper()
-            if "SST"  in n: sst_file = f
-            elif "SP_A" in n or "SPA" in n: spa_file = f
-            elif "SP_B" in n or "SPB" in n: spb_file = f
-            elif "SP_C" in n or "SPC" in n: spc_file = f
-        # 업로드 현황 표시
-        if uploaded:
-            cols = st.columns(4)
-            for col, label, f in zip(cols,
-                ["SST", "SP_A", "SP_B", "SP_C"],
-                [sst_file, spa_file, spb_file, spc_file]):
-                col.success(f"✓ {f.name}" if f else "—")
-                col.caption(label)
-        if st.button("▶  분석 실행", type="primary",
-                     disabled=not any([spa_file, spb_file, spc_file]),
-                     use_container_width=True):
-            _run_id_csv(product, sst_file, spa_file, spb_file, spc_file)
-    else:
-        st.subheader(f"③ CSV 파일 업로드  〔우황청심원 {product} 확인〕")
-        st.caption("SST / SP_A / SP_B / SP_C 파일을 한 번에 선택하세요 (파일명에 SST, SP_A, SP_B, SP_C 포함)")
-        uploaded = st.file_uploader("CSV 파일 선택 (복수 선택 가능)",
-                                    type="csv", accept_multiple_files=True,
-                                    key="id_csv_multi2")
-        sst_file = spa_file = spb_file = spc_file = None
-        for f in (uploaded or []):
-            n = f.name.upper()
-            if "SST"  in n: sst_file = f
-            elif "SP_A" in n or "SPA" in n: spa_file = f
-            elif "SP_B" in n or "SPB" in n: spb_file = f
-            elif "SP_C" in n or "SPC" in n: spc_file = f
-        if uploaded:
-            cols = st.columns(4)
-            for col, label, f in zip(cols,
-                ["SST", "SP_A", "SP_B", "SP_C"],
-                [sst_file, spa_file, spb_file, spc_file]):
-                col.success(f"✓ {f.name}" if f else "—")
-                col.caption(label)
-        if st.button("▶  분석 실행", type="primary",
-                     disabled=not any([spa_file, spb_file, spc_file]),
-                     use_container_width=True):
-            _run_id_csv(product, sst_file, spa_file, spb_file, spc_file)
+    st.subheader(f"③ CSV 파일 업로드  〔우황청심원 {product} 확인〕")
+    st.caption("SST / SP_A / SP_B / SP_C 파일을 한 번에 선택하세요 (파일명에 SST, SP_A, SP_B, SP_C 포함)")
+    uploaded = st.file_uploader("CSV 파일 선택 (복수 선택 가능)",
+                                type="csv", accept_multiple_files=True,
+                                key="id_csv_multi")
+    sst_file = spa_file = spb_file = spc_file = None
+    for f in (uploaded or []):
+        n = f.name.upper()
+        if "SST"  in n: sst_file = f
+        elif "SP_A" in n or "SPA" in n: spa_file = f
+        elif "SP_B" in n or "SPB" in n: spb_file = f
+        elif "SP_C" in n or "SPC" in n: spc_file = f
+    if uploaded:
+        cols = st.columns(4)
+        for col, label, f in zip(cols,
+            ["SST", "SP_A", "SP_B", "SP_C"],
+            [sst_file, spa_file, spb_file, spc_file]):
+            col.success(f"✓ {f.name}" if f else "—")
+            col.caption(label)
+    if st.button("▶  분석 실행", type="primary",
+                 disabled=not any([spa_file, spb_file, spc_file]),
+                 use_container_width=True):
+        _run_id_csv(product, sst_file, spa_file, spb_file, spc_file)
 
 elif test_type == "함량":
     st.subheader(f"③ CSV 파일 업로드  〔우황청심원 {product} 함량〕")
