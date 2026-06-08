@@ -79,27 +79,30 @@ def parse_std(file_obj):
     resolutions : list[dict]  길이 6, 각 dict = {aa_name: float|None}
     """
     text = _extract_text(file_obj)
-    runs, resolutions = [], []
+
+    # sample_id별로 areas/resolutions 누적 (페이지 경계에서 블록이 쪼개지는 경우 병합)
+    merged: dict = {}   # sample_id → {"areas": {...}, "ress": {...}}
 
     for block in re.split(r"All Signals Result Table", text)[1:]:
         sample_id = _table_sample_id(block)
         if not sample_id:
             continue
-        # STD 런 블록만 처리 (파일명에 _STD_ 포함)
         if "_STD_" not in sample_id.upper() and "STD" not in sample_id.upper():
             continue
 
-        areas, ress = {}, {}
+        entry = merged.setdefault(sample_id, {"areas": {}, "ress": {}})
         for line in block.splitlines():
             result = _parse_data_line(line)
             if result:
                 aa, area, res = result
-                areas[aa] = area
-                ress[aa]  = res
+                entry["areas"].setdefault(aa, area)   # 먼저 나온 값 우선
+                entry["ress"].setdefault(aa, res)
 
-        if len(areas) >= 5:          # 최소 5개 이상 파싱된 경우만 유효
-            runs.append(areas)
-            resolutions.append(ress)
+    runs, resolutions = [], []
+    for entry in merged.values():
+        if len(entry["areas"]) >= 5:
+            runs.append(entry["areas"])
+            resolutions.append(entry["ress"])
 
     return runs, resolutions
 
@@ -123,6 +126,9 @@ def parse_sp(file_obj, debug: bool = False):
     if debug:
         dbg.append(f"블록 수(헤더 제외): {len(blocks)-1}")
 
+    # (lot_id, sample_num) → areas 누적 dict (페이지 경계 블록 분리 대응)
+    merged: dict = {}
+
     for bi, block in enumerate(blocks[1:], 1):
         sample_id = _table_sample_id(block)
         if debug:
@@ -130,7 +136,6 @@ def parse_sp(file_obj, debug: bool = False):
         if not sample_id:
             continue
 
-        # 실제 패턴: ...Sol_LT_12M_25003A-1_00_53 → 숫자로 시작하는 lot 추출
         m = re.search(r"_(\d+[A-Za-z]*)-(\d+)[_\s]", sample_id)
         if not m:
             if debug:
@@ -139,20 +144,22 @@ def parse_sp(file_obj, debug: bool = False):
 
         lot_id     = m.group(1)
         sample_num = int(m.group(2))
+        key        = (lot_id, sample_num)
 
-        areas = {}
+        entry = merged.setdefault(key, {})
         for line in block.splitlines():
             result = _parse_data_line(line)
             if result:
                 aa, area, _ = result
-                areas[aa] = area
+                entry.setdefault(aa, area)   # 먼저 나온 값 우선
 
         if debug:
-            dbg.append(f"  → lot={lot_id} sample={sample_num} AA수={len(areas)} {list(areas.keys())}")
+            dbg.append(f"  → lot={lot_id} sample={sample_num} 누적AA수={len(entry)}")
 
+    for (lot_id, sample_num), areas in merged.items():
         if len(areas) >= 5:
             lots.setdefault(lot_id, {})[sample_num] = areas
         elif debug:
-            dbg.append(f"  → AA 5개 미만으로 스킵")
+            dbg.append(f"  → {lot_id}-{sample_num} AA 5개 미만으로 스킵")
 
     return (lots, dbg) if debug else lots
