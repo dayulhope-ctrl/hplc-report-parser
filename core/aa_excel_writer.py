@@ -45,8 +45,19 @@ def _c(ws, row, col, value=None, *,
     return c
 
 
-def _merge(ws, r1, c1, r2, c2):
-    ws.merge_cells(start_row=r1, start_column=c1, end_row=r2, end_column=c2)
+def _merged_header(ws, row, c1, c2, value, fn):
+    """
+    두 열(c1, c2)을 병합한 헤더 셀 작성.
+    openpyxl MergedCell은 border 설정이 파일에 반영되지 않으므로
+    마스터 셀(c1)에 전체 테두리를 한 번에 적용한다.
+    """
+    ws.merge_cells(start_row=row, start_column=c1, end_row=row, end_column=c2)
+
+    tl = ws.cell(row=row, column=c1, value=value)
+    tl.font      = Font(name=fn, size=FS, bold=True)
+    tl.alignment = Alignment(horizontal="center", vertical="center")
+    tl.fill      = FILL_HEADER
+    tl.border    = Border(left=_T, right=_T, top=_T, bottom=_T)
 
 
 def _calc_rsd(values: list):
@@ -117,13 +128,10 @@ def _write_std_group(ws, start_row: int, group_aas: list, runs: list) -> int:
     # ─ 행 레이블 열(A) 헤더칸
     _c(ws, start_row, 1, "", fill=FILL_HEADER)
 
-    # ─ AA 헤더 (2열 병합)
+    # ─ AA 헤더 (2열 병합) — 내부선 없이
     for i, aa in enumerate(group_aas):
         c1 = 2 + i * 2
-        c2 = c1 + 1
-        _c(ws, start_row, c1, aa,  fill=FILL_HEADER, bold=True)
-        _c(ws, start_row, c2, "",  fill=FILL_HEADER)
-        _merge(ws, start_row, c1, start_row, c2)
+        _merged_header(ws, start_row, c1, c1 + 1, aa, FN_DATA)
 
     # ─ 런 1~6
     for ri, run_data in enumerate(runs[:6]):
@@ -189,13 +197,10 @@ def _write_sp_group(ws, start_row: int, group_aas: list, lot_data: dict) -> int:
 
     _c(ws, start_row, 1, "", fill=FILL_HEADER)
 
-    # AA 헤더 (2열 병합)
+    # AA 헤더 (2열 병합) — 내부선 없이
     for i, aa in enumerate(group_aas):
         c1 = 2 + i * 2
-        c2 = c1 + 1
-        _c(ws, start_row, c1, aa,  fill=FILL_HEADER, bold=True)
-        _c(ws, start_row, c2, "",  fill=FILL_HEADER)
-        _merge(ws, start_row, c1, start_row, c2)
+        _merged_header(ws, start_row, c1, c1 + 1, aa, FN_DATA)
 
     # Sample 1 / Sample 2
     for s in (1, 2):

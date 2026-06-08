@@ -64,7 +64,8 @@ def _parse_data_line(line: str):
 
 def _table_sample_id(block_head: str) -> str | None:
     """'All Signals Result Table' 이후 텍스트에서 샘플 ID 추출."""
-    m = re.search(r'\(ESTD\s*-\s*\S+[/\\]([^)]+)\)', block_head)
+    # 경로 구분자가 있을 수도 없을 수도 있으므로 optional
+    m = re.search(r'\(ESTD\s*-\s*(?:\S+[/\\])?([^)]+)\)', block_head)
     return m.group(1).strip() if m else None
 
 
@@ -121,8 +122,8 @@ def parse_sp(file_obj):
         if not sample_id:
             continue
 
-        # 패턴: ...Sol_26001A-1_19_37  또는  ...Sol_26001A-2_...
-        m = re.search(r"Sol_([A-Za-z0-9]+)-(\d+)[_\s]", sample_id)
+        # 패턴: Sol_26001A-1_19_37 / Sol_26001A-2 / Sol_26001A-1 (끝)
+        m = re.search(r"Sol_([A-Za-z0-9]+)-(\d+)", sample_id)
         if not m:
             continue
 
