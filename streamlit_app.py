@@ -119,6 +119,13 @@ def _run_amino_acid(std_files, sp_files):
     with st.spinner("엑셀 생성 중..."):
         excel_bytes = write_aa_result(all_runs, all_res, all_lots)
 
+    # 디버그: openpyxl 버전 및 병합 셀 확인
+    import openpyxl as _opx, io as _io
+    _wb = _opx.load_workbook(_io.BytesIO(excel_bytes))
+    _ws = _wb['표준액 면적']
+    _merges = sorted(str(r) for r in _ws.merged_cells.ranges)
+    st.info(f"openpyxl {_opx.__version__} | 병합 셀: {_merges}")
+
     st.download_button("📥 결과 엑셀 다운로드", data=excel_bytes,
                        file_name="아미노산_함량_결과.xlsx",
                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
