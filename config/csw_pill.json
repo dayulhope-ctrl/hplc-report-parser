@@ -1,0 +1,73 @@
+{
+  "product_type": "환",
+  "id_reference_compound": "Ginsenoside Rb1",
+  "id_rrt_tolerance": 0.10,
+  "compounds_id": [
+    {"name": "Platycodin-D",              "transitions": ["1223.7","681.1","469.2"],   "rrt_expected": 0.8},
+    {"name": "Ginsenoside Rb1",           "transitions": ["945.3","221.2","178.8"],    "rrt_expected": 1.0, "is_reference": true},
+    {"name": "BoRy",                      "transitions": ["311.3","293.2","55.1"],     "rrt_expected": 1.7},
+    {"name": "Bilirubin",                 "transitions": ["285.2","241.2","213.0"],    "rrt_expected": 1.8},
+    {"name": "Prim-O-glucosylcimifugin",  "transitions": ["307.2","259.0","235.1"],   "rrt_expected": 0.4},
+    {"name": "PH",                        "transitions": ["314.1","298.8","271.0"],    "rrt_expected": 0.5},
+    {"name": "SY",                        "transitions": ["147.1","121.1","77.1"],     "rrt_expected": 0.7},
+    {"name": "Saikosaponin-A",            "transitions": ["617.6","145.0","101.0"],    "rrt_expected": 1.2},
+    {"name": "6-Gingerol",                "transitions": ["193.0","99.0","57.0"],      "rrt_expected": 1.2},
+    {"name": "Atractylenolide III",       "transitions": ["203.1","187.1","83.1"],     "rrt_expected": 1.3},
+    {"name": "Ligustilide",               "transitions": ["115.1","77.0","51.1"],      "rrt_expected": 1.4},
+    {"name": "Amygdalin",                 "transitions": ["323.0","221.0","161.0"],    "rrt_expected": 0.3},
+    {"name": "Paeoniflorin",              "transitions": ["327.2","164.9","121.1"],    "rrt_expected": 0.4},
+    {"name": "Baicalin",                  "transitions": ["123.0","103.0","94.9"],     "rrt_expected": 0.7},
+    {"name": "Glycyrrhizin",              "transitions": ["350.7","193.0","112.9"],    "rrt_expected": 1.1},
+    {"name": "Decursin",                  "transitions": ["247.2","128.0","115.0"],    "rrt_expected": 1.5}
+  ],
+  "compounds_as": [
+    {
+      "name": "Glycyrrhizin",
+      "korean": "감초 중 글리시리진산",
+      "std_volume_mL": 10000,
+      "sp_volume_mL": 10000,
+      "unit": "mg",
+      "unit_factor": 1
+    },
+    {
+      "name": "Ginsenoside Rb1",
+      "korean": "인삼 중 진세노시드 Rb1",
+      "std_volume_mL": 400,
+      "sp_volume_mL": 10000,
+      "unit": "mg",
+      "unit_factor": 1
+    },
+    {
+      "name": "Cinnamic acid",
+      "korean": "육계 중 신남산",
+      "std_volume_mL": 400,
+      "sp_volume_mL": 100000,
+      "unit": "μg",
+      "unit_factor": 1000
+    },
+    {
+      "name": "Decursin",
+      "korean": "당귀 중 총데쿠르신",
+      "std_volume_mL": 10000,
+      "sp_volume_mL": 100000,
+      "unit": "mg",
+      "unit_factor": 1
+    },
+    {
+      "name": "Paeoniflorin",
+      "korean": "작약 중 패오니플로린",
+      "std_volume_mL": 10000,
+      "sp_volume_mL": 100000,
+      "unit": "mg",
+      "unit_factor": 1
+    },
+    {
+      "name": "Amygdalin",
+      "korean": "행인 중 아미그달린",
+      "std_volume_mL": 10000,
+      "sp_volume_mL": 100000,
+      "unit": "mg",
+      "unit_factor": 1
+    }
+  ]
+}
