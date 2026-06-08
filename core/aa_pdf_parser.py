@@ -130,10 +130,11 @@ def parse_sp(file_obj, debug: bool = False):
         if not sample_id:
             continue
 
-        m = re.search(r"Sol_([A-Za-z0-9]+)-(\d+)", sample_id)
+        # 실제 패턴: ...Sol_LT_12M_25003A-1_00_53 → 숫자로 시작하는 lot 추출
+        m = re.search(r"_(\d+[A-Za-z]*)-(\d+)[_\s]", sample_id)
         if not m:
             if debug:
-                dbg.append(f"  → Sol_ 패턴 불일치: {repr(sample_id)}")
+                dbg.append(f"  → lot 패턴 불일치: {repr(sample_id)}")
             continue
 
         lot_id     = m.group(1)
