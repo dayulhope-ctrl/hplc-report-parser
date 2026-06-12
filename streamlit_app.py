@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 import sys, json, os, tempfile
 from pathlib import Path
 import streamlit as st
@@ -292,32 +292,31 @@ elif product == "공진단":
                                 type="csv", accept_multiple_files=True, key="gj_csv")
 
     def _classify_gj(files):
-        std_f, spa_f, spb_f, spc_f = [], [], [], []
+        std_f, spa_f, spb_f = [], [], []
         for f in (files or []):
             n = f.name.upper().replace("-", "_")
-            if "SP_C" in n or "SPC" in n:    spc_f.append(f)
-            elif "SP_B" in n or "SPB" in n:  spb_f.append(f)
+            if "SP_B" in n or "SPB" in n:    spb_f.append(f)
             elif "SP_A" in n or "SPA" in n:  spa_f.append(f)
             elif "STD" in n:                 std_f.append(f)
             else:
                 # 이름으로 판단 불가 시 SP_A/B 자동 구분 불가 → std로 추가
                 std_f.append(f)
-        return std_f, spa_f, spb_f, spc_f
+        return std_f, spa_f, spb_f
 
-    gj_std, gj_spa, gj_spb, gj_spc = _classify_gj(uploaded)
+    gj_std, gj_spa, gj_spb = _classify_gj(uploaded)
 
     if uploaded:
-        cols = st.columns(4)
+        cols = st.columns(3)
         for col, label, flist in zip(cols,
-            ["STD", "SP_A", "SP_B", "SP_C"],
-            [gj_std, gj_spa, gj_spb, gj_spc]):
+            ["STD", "SP_A", "SP_B"],
+            [gj_std, gj_spa, gj_spb]):
             if flist:
                 for f in flist: col.success(f"✓ {f.name}")
             else:
                 col.info(f"{label} 없음")
             col.caption(label)
 
-    all_gj = (gj_std or []) + (gj_spa or []) + (gj_spb or []) + (gj_spc or [])
+    all_gj = (gj_std or []) + (gj_spa or []) + (gj_spb or [])
     if st.button("▶  분석 실행", type="primary",
                  disabled=not all_gj, use_container_width=True):
         try:
