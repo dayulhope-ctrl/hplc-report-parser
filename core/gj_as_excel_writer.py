@@ -17,10 +17,12 @@ AL = Alignment(horizontal="left",   vertical="center")
 FS = 12
 
 IS_COMP = "Cinnamic acid-d6"
+# (시트명, 메서드, CSV 후보, 합산할 추가 화합물 후보 목록)
+# 합산 후보가 있으면 해당 화합물들의 Area를 더해서 입력
 AS_COMPOUNDS = [
-    ("Loganin",         "B", ["Loganin"]),
-    ("Ginsenoside Rb1", "A", ["Ginsenoside Rb1"]),
-    ("Decursin",        "B", ["Decursin"]),
+    ("Loganin",         "B", ["Loganin"],         []),
+    ("Ginsenoside Rb1", "A", ["Ginsenoside Rb1"],  []),
+    ("Decursin",        "B", ["Decursin"],         ["Decursin Angelate", "Decursin angelate"]),
 ]
 
 
@@ -95,13 +97,77 @@ def _stats_rows(ws, row, val_start, val_end, cols):
     return row
 
 
-def _build_sheet(ws, comp_name, method, csv_candidates, parsed):
+def _sum_areas(base_data, extra_candidates, parsed, section):
+    """base_data의 run 목록에서 extra 화합물의 area를 더해 새 run 목록 반환."""
+    runs = base_data.get(section, [])
+    if not extra_candidates:
+        return runs
+    extra = _lookup(parsed, extra_candidates)
+    if not extra:
+        return runs
+    extras = [extra]
+    result = []
+    for i, run in enumerate(runs):
+        base_area = run.get("area") or 0
+        extra_area = 0
+        for ex in extras:
+            ex_runs = ex.get(section, [])
+            if i < len(ex_runs):
+                extra_area += (ex_runs[i].get("area") or 0)
+        new_run = dict(run)
+        new_run["area"] = base_area + extra_area if (base_area or extra_area) else None
+        result.append(new_run)
+    return result
+
+
+def _sum_sp_lots(base_data, extra_candidates, parsed, method):
+    """SP lot 그룹화 시 extra 화합물 area를 합산."""
+    def _filter(runs, m):
+        return [r for r in runs if f"_{m}-" in r.get("name", "")]
+
+    def _group(runs):
+        lots = {}
+        for r in runs:
+            m = re.search(r"^(.+?)_([AB])-(\d+)$", r.get("name", ""))
+            if m:
+                lot, rn = m.group(1), int(m.group(3))
+                lots.setdefault(lot, {})[rn] = r
+        return lots
+
+    base_runs = _filter(base_data.get("sp", []), method)
+    base_lots = _group(base_runs)
+
+    extra = _lookup(parsed, extra_candidates)
+    extras = [extra] if extra else []
+    extra_lot_maps = []
+    for ex in extras:
+        ex_runs = _filter(ex.get("sp", []), method)
+        extra_lot_maps.append(_group(ex_runs))
+
+    all_lots = sorted(set(list(base_lots.keys())))
+    result = {}
+    for lot in all_lots:
+        base_lot_data = base_lots.get(lot, {})
+        all_rns = set(base_lot_data.keys())
+        for em in extra_lot_maps:
+            all_rns |= set(em.get(lot, {}).keys())
+        for rn in sorted(all_rns):
+            base_area = (base_lot_data.get(rn) or {}).get("area") or 0
+            extra_area = 0
+            for em in extra_lot_maps:
+                extra_area += ((em.get(lot, {}).get(rn) or {}).get("area") or 0)
+            result.setdefault(lot, {})[rn] = base_area + extra_area if (base_area or extra_area) else None
+    return result
+
+
+def _build_sheet(ws, comp_name, method, csv_candidates, extra_candidates, parsed):
     for col, w in {1: 16, 2: 10, 3: 14, 4: 10, 5: 14, 6: 10}.items():
         ws.column_dimensions[get_column_letter(col)].width = w
 
     comp_data = _lookup(parsed, csv_candidates)
     is_data   = _get_is(parsed)
-    std_runs  = comp_data.get("std", [])
+    # STD: extra 화합물 area 합산 (Decursin + Decursin Angelate 등)
+    std_runs  = _sum_areas(comp_data, extra_candidates, parsed, "std")
     is_std    = is_data.get("std", [])
 
     row = 1
@@ -140,14 +206,10 @@ def _build_sheet(ws, comp_name, method, csv_candidates, parsed):
     row = _stats_rows(ws, row, val_start, val_end, [2, 3, 4, 5, 6])
     row += 1
 
-    sp_all    = comp_data.get("sp", [])
     is_sp_all = is_data.get("sp", [])
 
     def _filter(runs, m):
         return [r for r in runs if f"_{m}-" in r.get("name", "")]
-
-    sp_runs = _filter(sp_all, method)
-    is_runs = _filter(is_sp_all, method)
 
     def _group(runs):
         lots = {}
@@ -158,7 +220,9 @@ def _build_sheet(ws, comp_name, method, csv_candidates, parsed):
                 lots.setdefault(lot, {})[rn] = r.get("area")
         return lots
 
-    sp_lots  = _group(sp_runs)
+    # SP: extra 화합물 area 합산 후 lot 그룹화
+    sp_lots  = _sum_sp_lots(comp_data, extra_candidates, parsed, method)
+    is_runs  = _filter(is_sp_all, method)
     is_lots  = _group(is_runs)
     all_lots = sorted(set(list(sp_lots.keys()) + list(is_lots.keys()))) or ["Sample 1"]
     n  = len(all_lots)
@@ -200,9 +264,9 @@ def _build_sheet(ws, comp_name, method, csv_candidates, parsed):
 def write_gj_as_result(parsed: dict) -> bytes:
     wb = openpyxl.Workbook()
     wb.remove(wb.active)
-    for comp_name, method, csv_candidates in AS_COMPOUNDS:
+    for comp_name, method, csv_candidates, extra_candidates in AS_COMPOUNDS:
         ws = wb.create_sheet(comp_name[:31])
-        _build_sheet(ws, comp_name, method, csv_candidates, parsed)
+        _build_sheet(ws, comp_name, method, csv_candidates, extra_candidates, parsed)
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
