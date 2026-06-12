@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 import sys, json, os, tempfile
 from pathlib import Path
 import streamlit as st
@@ -56,7 +56,6 @@ def _run_as(product, as_files):
     lot_names = list(lot_groups.keys())
     st.success(f"추출 완료 — STD 6런 / SP Lot: {', '.join(lot_names)}")
 
-    # 미리보기
     preview = []
     for comp, cdata in parsed.items():
         stats = _stats(cdata)
@@ -75,11 +74,63 @@ def _run_as(product, as_files):
                        type="primary", use_container_width=True)
 
 
+def _run_gj(gj_files, test_type):
+    """공진단 확인 또는 함량 분석 (동일 CSV 파일 사용)."""
+    from core.csv_utils import merge_parsed
+    from core.gj_csv_parser import get_gj_std_stats
+
+    with st.spinner("CSV 파싱 중..."):
+        parsed = merge_parsed(gj_files, prefer="area")
+
+    if not parsed:
+        st.error("CSV에서 데이터를 추출하지 못했습니다."); return
+
+    # 미리보기
+    preview = []
+    for comp, cdata in parsed.items():
+        stats = get_gj_std_stats(cdata)
+        preview.append({
+            "성분": comp,
+            "STD 런": stats.get("count", 0),
+            "STD 평균 Area": stats.get("avg_area"),
+            "%RSD": stats.get("rsd"),
+            "SP 런": len(cdata.get("sp", [])),
+        })
+    st.dataframe(pd.DataFrame(preview), use_container_width=True, hide_index=True)
+
+    # lot 이름 추출
+    lot_names = set()
+    for cdata in parsed.values():
+        for entry in cdata.get("sp", []):
+            import re
+            m = re.search(r'^(.+?)_([AB])-', entry.get("name", ""))
+            if m:
+                lot_names.add(m.group(1))
+    lot_name = list(lot_names)[0] if lot_names else "결과"
+    st.info(f"Lot: {lot_name}")
+
+    if test_type == "확인":
+        from core.gj_id_excel_writer import write_gj_id_result
+        with st.spinner("확인 결과 엑셀 생성 중..."):
+            excel_bytes = write_gj_id_result(parsed)
+        st.download_button("📥 확인결과 엑셀 다운로드", data=excel_bytes,
+                           file_name=f"공진단_확인결과_{lot_name}.xlsx",
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                           type="primary", use_container_width=True)
+    else:
+        from core.gj_as_excel_writer import write_gj_as_result
+        with st.spinner("함량 결과 엑셀 생성 중..."):
+            excel_bytes = write_gj_as_result(parsed)
+        st.download_button("📥 함량결과 엑셀 다운로드", data=excel_bytes,
+                           file_name=f"공진단_함량결과_{lot_name}.xlsx",
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                           type="primary", use_container_width=True)
+
+
 def _run_amino_acid(std_files, sp_files):
     from core.aa_pdf_parser import parse_std, parse_sp
     from core.aa_excel_writer import write_aa_result
 
-    # ── STD 파싱 (여러 파일 병합 가능)
     all_runs, all_res = [], []
     with st.spinner("STD PDF 파싱 중..."):
         for f in std_files:
@@ -95,7 +146,6 @@ def _run_amino_acid(std_files, sp_files):
 
     st.success(f"STD {len(all_runs)}런 파싱 완료")
 
-    # ── SP 파싱 (여러 파일 → lot 병합)
     all_lots: dict = {}
     with st.spinner("검액 PDF 파싱 중..."):
         for f in sp_files:
@@ -115,7 +165,6 @@ def _run_amino_acid(std_files, sp_files):
     lot_names = sorted(all_lots.keys())
     st.success(f"검액 Lot: {', '.join(lot_names)}")
 
-    # ── 엑셀 생성
     with st.spinner("엑셀 생성 중..."):
         excel_bytes = write_aa_result(all_runs, all_res, all_lots)
 
@@ -148,7 +197,7 @@ st.divider()
 # STEP 1 — 제품 선택
 # ══════════════════════════════════════════════════════════════════
 st.subheader("① 제품 선택")
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4 = st.columns(4)
 
 with col1:
     if st.button("💊  환제", use_container_width=True,
@@ -159,6 +208,10 @@ with col2:
                  type="primary" if st.session_state.product=="현탁제" else "secondary"):
         st.session_state.product="현탁제"; st.session_state.test_type=None; st.rerun()
 with col3:
+    if st.button("💫  공진단", use_container_width=True,
+                 type="primary" if st.session_state.product=="공진단" else "secondary"):
+        st.session_state.product="공진단"; st.session_state.test_type=None; st.rerun()
+with col4:
     if st.button("🔬  파워라센 아미노산", use_container_width=True,
                  type="primary" if st.session_state.product=="아미노산" else "secondary"):
         st.session_state.product="아미노산"; st.session_state.test_type=None; st.rerun()
@@ -189,10 +242,26 @@ if product in ("환제", "현탁제"):
         st.stop()
     st.divider()
 
+elif product == "공진단":
+    st.subheader("② 시험 항목 선택  〔공진단〕")
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("📋  확인 (ID)", use_container_width=True,
+                     type="primary" if st.session_state.test_type=="확인" else "secondary"):
+            st.session_state.test_type="확인"; st.rerun()
+    with col2:
+        if st.button("⚗️  함량 (AS)", use_container_width=True,
+                     type="primary" if st.session_state.test_type=="함량" else "secondary"):
+            st.session_state.test_type="함량"; st.rerun()
+
+    if not st.session_state.test_type:
+        st.stop()
+    st.divider()
+
 test_type = st.session_state.test_type
 
 # ══════════════════════════════════════════════════════════════════
-# STEP 3 — PDF 업로드
+# STEP 3 — 파일 업로드
 # ══════════════════════════════════════════════════════════════════
 
 if product == "아미노산":
@@ -215,6 +284,46 @@ if product == "아미노산":
     if st.button("▶  분석 실행", type="primary",
                  disabled=not(std_files and sp_files), use_container_width=True):
         _run_amino_acid(std_files, sp_files)
+
+elif product == "공진단":
+    st.subheader(f"③ CSV 파일 업로드  〔공진단 {test_type}〕")
+    st.caption("STD / SP-A / SP-B (/ SP-C) CSV 파일을 한 번에 선택하세요 — 파일명으로 자동 분류")
+    uploaded = st.file_uploader("CSV 파일 선택 (복수 선택 가능)",
+                                type="csv", accept_multiple_files=True, key="gj_csv")
+
+    def _classify_gj(files):
+        std_f, spa_f, spb_f, spc_f = [], [], [], []
+        for f in (files or []):
+            n = f.name.upper().replace("-", "_")
+            if "SP_C" in n or "SPC" in n:    spc_f.append(f)
+            elif "SP_B" in n or "SPB" in n:  spb_f.append(f)
+            elif "SP_A" in n or "SPA" in n:  spa_f.append(f)
+            elif "STD" in n:                 std_f.append(f)
+            else:
+                # 이름으로 판단 불가 시 SP_A/B 자동 구분 불가 → std로 추가
+                std_f.append(f)
+        return std_f, spa_f, spb_f, spc_f
+
+    gj_std, gj_spa, gj_spb, gj_spc = _classify_gj(uploaded)
+
+    if uploaded:
+        cols = st.columns(4)
+        for col, label, flist in zip(cols,
+            ["STD", "SP_A", "SP_B", "SP_C"],
+            [gj_std, gj_spa, gj_spb, gj_spc]):
+            if flist:
+                for f in flist: col.success(f"✓ {f.name}")
+            else:
+                col.info(f"{label} 없음")
+            col.caption(label)
+
+    all_gj = (gj_std or []) + (gj_spa or []) + (gj_spb or []) + (gj_spc or [])
+    if st.button("▶  분석 실행", type="primary",
+                 disabled=not all_gj, use_container_width=True):
+        try:
+            _run_gj(all_gj, test_type)
+        except Exception as e:
+            st.error(f"오류: {e}")
 
 elif test_type == "확인":
     st.subheader(f"③ CSV 파일 업로드  〔우황청심원 {product} 확인〕")
