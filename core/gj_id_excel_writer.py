@@ -176,7 +176,6 @@ def _write_sst_group(ws, row, group_names, parsed):
             cell.number_format = fmt
         row += 1
 
-    _outer_border(ws, data_row_start, LABEL_COL, row - 1, last_col)
     return row
 
 
@@ -233,7 +232,6 @@ def _write_result_group(ws, row, group_names, parsed):
             _cell(ws, row, data_start_col + gi * N_TRANS + ti, "", fill=GRAY)
     row += 1
 
-    _outer_border(ws, sn_rows[0] if sn_rows else row - 2, LABEL_COL, row - 1, last_col)
     return row
 
 
