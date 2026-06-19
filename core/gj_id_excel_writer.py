@@ -205,12 +205,29 @@ def _write_result_group(ws, row, group_names, parsed):
     if max_runs == 0:
         max_runs = 1
 
+    # 첫 번째 화합물에서 SP 런 이름 목록 수집 (검체 라벨용)
+    sp_run_names = []
+    for gname in group_names:
+        transitions, _ = COMPOUNDS[gname]
+        comp_data = _lookup_trans(parsed, gname, transitions[0])
+        sp_list = comp_data.get("sp", [])
+        if sp_list:
+            sp_run_names = [r.get("name", "") for r in sp_list]
+            break
+
+    def _short_name(name):
+        import re
+        m = re.search(r'_([^_]+_[AB]-\d+)$', name)
+        return m.group(1) if m else name
+
     # S/N 데이터 행: transition별 S/N
     sn_rows = []
     for run_idx in range(max_runs):
         sn_row = row
         sn_rows.append(sn_row)
-        _cell(ws, row, LABEL_COL, "S/N비", fill=WHITE, bold=True)
+        sp_label = _short_name(sp_run_names[run_idx]) if run_idx < len(sp_run_names) else f"Run {run_idx+1}"
+        _cell(ws, row, LABEL_COL, f"S/N비\n{sp_label}", fill=WHITE, bold=True, fs=9)
+        ws.row_dimensions[row].height = 28
         for gi, gname in enumerate(group_names):
             transitions, _ = COMPOUNDS[gname]
             for ti, trans in enumerate(transitions):
