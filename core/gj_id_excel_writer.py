@@ -217,8 +217,8 @@ def _write_result_group(ws, row, group_names, parsed):
 
     def _short_name(name):
         import re
-        m = re.search(r'_([^_]+_[AB]-\d+)$', name)
-        return m.group(1) if m else name
+        n = re.sub(r'^KD_Gongjindan_', '', name)
+        return n
 
     # S/N 데이터 행: transition별 S/N
     sn_rows = []
