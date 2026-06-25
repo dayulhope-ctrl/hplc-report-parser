@@ -19,6 +19,8 @@ BLUE_H   = PatternFill("solid", fgColor="BDD7EE")
 GRAY     = PatternFill("solid", fgColor="D9D9D9")
 WHITE    = PatternFill("solid", fgColor="FFFFFF")
 TITLE_F  = PatternFill("solid", fgColor="2E75B6")
+GREEN    = PatternFill("solid", fgColor="C6EFCE")
+RED_F    = PatternFill("solid", fgColor="FFC7CE")
 
 FS_SST = 14   # SST 섹션 글꼴 크기
 FS_SP  = 11   # Value(SP) 섹션 글꼴 크기
@@ -128,10 +130,13 @@ def _group_transitions(transitions):
     return groups
 
 
-def _set_col_widths(ws):
-    ws.column_dimensions["A"].width = 20   # SST 구분 레이블 / SP 섹션 비움
-    for col in range(2, 9):               # B~H
+def _set_col_widths(ws, show_rrt=False):
+    ws.column_dimensions["A"].width = 20
+    for col in range(2, 9):    # B~H
         ws.column_dimensions[get_column_letter(col)].width = 14
+    if show_rrt:
+        for col in range(9, 12):   # I~K: RRT / 기준RRT / 판정
+            ws.column_dimensions[get_column_letter(col)].width = 10
 
 
 # ════════════════════════════════════════════════════════════════
@@ -146,14 +151,72 @@ HYEON_SP_ORDER = [
 ]
 
 
-def _build_sheet(wb, ws_title, sst_data, sp_files, lot_idx, compound_order):
+# ── RRT 기준값 (±10%) ─────────────────────────────────────────────
+RRT_REF = {
+    "환제": {
+        "Amygdalin": 0.3,
+        "Paeoniflorin": 0.4,
+        "Prim-O-glucosylcimifugin": 0.4,
+        "PH": 0.5,
+        "Baicalin": 0.7,
+        "SY": 0.7,
+        "Platycodin-D": 0.8,
+        "Ginsenoside Rb1": 1.0,
+        "Glycyrrhizin": 1.1,
+        "Saikosaponin A": 1.2,
+        "6-Gingerol": 1.2,
+        "Atractylenolide III": 1.3,
+        "Ligustilide": 1.4,
+        "Decursin": 1.6,
+        "BoRy": 1.7,
+        "Bilirubin": 1.8,
+    },
+    "현탁제": {
+        "Amygdalin": 0.4,
+        "Paeoniflorin": 0.5,
+        "Prim-O-glucosylcimifugin": 0.6,
+        "PH": 0.7,
+        "Baicalin": 0.9,
+        "Ginsenoside_Rg1": 1.0,
+        "Platycodin-D": 1.2,
+        "Glycyrrhizin": 1.6,
+        "6-Gingerol": 1.7,
+        "Saikosaponin-A": 1.7,
+        "Atractylenolide III": 1.8,
+        "Ligustilide": 2.0,
+        "Decursin": 2.2,
+        "Bilirubin": 2.5,
+    },
+}
+REFERENCE_COMPOUND = {
+    "환제": "Ginsenoside Rb1",
+    "현탁제": "Ginsenoside_Rg1",
+}
+
+def _build_sheet(wb, ws_title, sst_data, sp_files, lot_idx, compound_order, form_type=None):
     """lot_idx번째 샘플 데이터로 시트 1장 생성."""
     ws = wb.create_sheet(title=ws_title[:31])
-    _set_col_widths(ws)
+    show_rrt = bool(form_type)
+    _set_col_widths(ws, show_rrt=show_rrt)
+
+    # 기준화합물 RT 추출
+    ref_rt = None
+    if form_type:
+        ref_comp = REFERENCE_COMPOUND.get(form_type)
+        if ref_comp:
+            for _sp in sp_files:
+                if not _sp: continue
+                _tlist = _sp.get("all_transitions") or [_sp.get("transitions", [])]
+                _sample = _tlist[lot_idx] if lot_idx < len(_tlist) else _tlist[0]
+                for _t in _sample:
+                    if _base_name(_t["name"]) == ref_comp:
+                        ref_rt = _t.get("rt")
+                        break
+                if ref_rt: break
 
     row = 1
     cs       = SP_DATA_COL
-    last_col = cs + N_TRANS * 2 - 1
+    last_col = cs + N_TRANS * 2 - 1 + (3 if show_rrt else 0)
 
     if sst_data:
         row = _write_sst_section(ws, row, sst_data)
@@ -177,7 +240,9 @@ def _build_sheet(wb, ws_title, sst_data, sp_files, lot_idx, compound_order):
             if base_name not in all_groups:
                 continue
             trans_list, single = all_groups[base_name]
-            row = _write_compound_block(ws, row, trans_list, single)
+            _ref_rrt = RRT_REF.get(form_type, {}).get(base_name) if form_type else None
+            row = _write_compound_block(ws, row, trans_list, single,
+                                        ref_rts=[ref_rt], ref_rrt=_ref_rrt)
     else:
         for sp_data in sp_files:
             if not sp_data:
@@ -185,7 +250,7 @@ def _build_sheet(wb, ws_title, sst_data, sp_files, lot_idx, compound_order):
             all_trans_list = sp_data.get("all_transitions") or [sp_data.get("transitions", [])]
             single_sp = dict(sp_data)
             single_sp["all_transitions"] = [all_trans_list[lot_idx]] if lot_idx < len(all_trans_list) else [all_trans_list[0]]
-            row = _write_sp_compounds(ws, row, single_sp)
+            row = _write_sp_compounds(ws, row, single_sp, form_type=form_type, ref_rt=ref_rt)
 
     if row > sp_section_start:
         _apply_outer_border(ws, sp_section_start, cs, row - 1, last_col)
@@ -193,7 +258,8 @@ def _build_sheet(wb, ws_title, sst_data, sp_files, lot_idx, compound_order):
 
 def write_id_csv_result(sst_data: dict,
                         sp_a: dict, sp_b: dict, sp_c: dict,
-                        compound_order: list = None) -> bytes:
+                        compound_order: list = None,
+                        form_type: str = None) -> bytes:
     wb = openpyxl.Workbook()
     wb.remove(wb.active)
 
@@ -214,7 +280,7 @@ def write_id_csv_result(sst_data: dict,
         import re as _re
         sheet_title = _re.sub(r'\.d$', '', sample_name, flags=_re.IGNORECASE)
         sheet_title = _re.sub(r'-[A-Ca-c]$', '', sheet_title)
-        _build_sheet(wb, sheet_title, sst_data, sp_files, lot_idx, compound_order)
+        _build_sheet(wb, sheet_title, sst_data, sp_files, lot_idx, compound_order, form_type=form_type)
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -310,9 +376,11 @@ def _apply_outer_border(ws, r1, c1, r2, c2):
 
 
 # ── SP 화합물 섹션 ────────────────────────────────────────────────
-def _write_compound_block(ws, row, trans_list, all_trans):
+def _write_compound_block(ws, row, trans_list, all_trans, ref_rts=None, ref_rrt=None):
     """단일 화합물 그룹 블록 출력 (헤더 + 서브헤더 + 샘플별 데이터 행)."""
     cs = SP_DATA_COL
+    show_rrt = ref_rts is not None and ref_rrt is not None
+    rrt_col  = cs + N_TRANS * 2  # col 8
 
     # Transition 헤더 행
     for i, t in enumerate(trans_list):
@@ -320,6 +388,10 @@ def _write_compound_block(ws, row, trans_list, all_trans):
         _c(ws, row, col,   t["name"] + " Results", fill=BLUE_H, bold=True)
         _c(ws, row, col+1, "",                      fill=BLUE_H)
         _merge(ws, row, col, row, col + 1)
+    if show_rrt:
+        _c(ws, row, rrt_col,   "RRT",    fill=BLUE_H, bold=True)
+        _c(ws, row, rrt_col+1, "기준RRT", fill=BLUE_H, bold=True)
+        _c(ws, row, rrt_col+2, "판정",   fill=BLUE_H, bold=True)
     row += 1
 
     # RT / S/N 서브헤더
@@ -327,22 +399,40 @@ def _write_compound_block(ws, row, trans_list, all_trans):
         col = cs + i * 2
         _c(ws, row, col,   "RT",  fill=BLUE_H, bold=True)
         _c(ws, row, col+1, "S/N", fill=BLUE_H, bold=True)
+    if show_rrt:
+        _c(ws, row, rrt_col,   "", fill=BLUE_H)
+        _c(ws, row, rrt_col+1, "", fill=BLUE_H)
+        _c(ws, row, rrt_col+2, "", fill=BLUE_H)
     row += 1
 
     # 샘플별 데이터 행
-    for sample_trans in all_trans:
+    for s_idx, sample_trans in enumerate(all_trans):
         sample_map = {t["name"]: t for t in sample_trans}
+        first_rt = None
         for i, t in enumerate(trans_list):
             col = cs + i * 2
             s = sample_map.get(t["name"], {})
             _c(ws, row, col,   s.get("rt"), fill=YELLOW, num_fmt="0.000")
             _c(ws, row, col+1, s.get("sn"), fill=YELLOW, num_fmt="0.00")
+            if i == 0: first_rt = s.get("rt")
+        if show_rrt:
+            _ref = ref_rts[s_idx] if s_idx < len(ref_rts) else None
+            rrt  = round(first_rt / _ref, 3) if first_rt and _ref else None
+            if rrt is not None:
+                ok = abs(rrt - ref_rrt) / ref_rrt <= 0.1
+                rrt_fill = GREEN if ok else RED_F
+                판정 = "적합" if ok else "부적합"
+            else:
+                rrt_fill, 판정 = GRAY, ""
+            _c(ws, row, rrt_col,   rrt,     fill=YELLOW, num_fmt="0.000")
+            _c(ws, row, rrt_col+1, ref_rrt, fill=GRAY,   num_fmt="0.0##")
+            _c(ws, row, rrt_col+2, 판정,   fill=rrt_fill, bold=True)
         row += 1
 
     return row
 
 
-def _write_sp_compounds(ws, row, sp_data):
+def _write_sp_compounds(ws, row, sp_data, form_type=None, ref_rt=None):
     """SP_A / SP_B / SP_C 파일의 전체 화합물을 CSV 순서대로 출력."""
     all_trans = sp_data.get("all_transitions") or [sp_data.get("transitions", [])]
     groups = _group_transitions(all_trans[0])
@@ -350,6 +440,9 @@ def _write_sp_compounds(ws, row, sp_data):
     for base_name, trans_list in groups:
         while len(trans_list) < N_TRANS:
             trans_list.append({"name": f"{base_name}_?", "rt": None, "sn": None})
-        row = _write_compound_block(ws, row, trans_list, all_trans)
+        _ref_rrt = RRT_REF.get(form_type, {}).get(base_name) if form_type else None
+        _ref_rts = [ref_rt] * len(all_trans) if ref_rt else None
+        row = _write_compound_block(ws, row, trans_list, all_trans,
+                                    ref_rts=_ref_rts, ref_rrt=_ref_rrt)
 
     return row
