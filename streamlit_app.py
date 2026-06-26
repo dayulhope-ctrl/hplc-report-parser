@@ -30,7 +30,7 @@ def _run_id_csv(product, sst_file, spa_file, spb_file, spc_file):
 
     from core.id_csv_excel_writer import HYEON_SP_ORDER
     order = HYEON_SP_ORDER if product == "현탁제" else None
-    excel_bytes = write_id_csv_result(sst_data, sp_a, sp_b, sp_c, compound_order=order)
+    excel_bytes = write_id_csv_result(sst_data, sp_a, sp_b, sp_c, compound_order=order, form_type=product)
     st.download_button("📥 결과 엑셀 다운로드", data=excel_bytes,
                        file_name=f"{product}_확인결과_{lot}.xlsx",
                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
