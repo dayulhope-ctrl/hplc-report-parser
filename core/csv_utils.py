@@ -2,18 +2,59 @@
 """
 CSV 파싱 공통 유틸리티
 
-모든 MassHunter CSV 포맷에 대해 헤더를 자동 감지합니다.
-- NAME_COL  : Row 1에서 "Name" 셀 위치 자동 탐색
-- 화합물 컬럼: Row 0에서 "X Results" 위치 → Row 1로 RT/Area(S/N) 컬럼 확인
-포맷이 변경돼도 헤더 키워드(Results, Name, RT, Area, S/N)만 유지되면 동작합니다.
+모든 MassHunter CSV/Excel 파일에 공통으로 사용하는 자동 파서입니다.
+- NAME_COL  : Row 1에서 "Name" 열 위치 자동 탐색
+- 화합물 컬럼: Row 0에서 "X Results" 위치 및 Row 1의 RT/Area(S/N) 컬럼 확인
+인식되지 않은 모든 키워드(Results, Name, RT, Area, S/N)는 무시됩니다.
 """
 
-import csv, re, math
+import csv, re, math, io
 from collections import defaultdict
 
 
-# ── 기본 I/O ─────────────────────────────────────────────────────────────────
+# ── 기본 I/O ──────────────────────────────────────────────────────────
+def _is_xlsx(file_obj) -> bool:
+    try:
+        if hasattr(file_obj, "read"):
+            header = file_obj.read(4)
+            if hasattr(file_obj, "seek"):
+                file_obj.seek(0)
+            return header[:2] == b"PK"
+        else:
+            with open(file_obj, "rb") as f:
+                return f.read(2) == b"PK"
+    except Exception:
+        return False
+
+
+def _read_xlsx_rows(file_obj) -> list:
+    import openpyxl
+    if hasattr(file_obj, "read"):
+        data = file_obj.read()
+        if hasattr(file_obj, "seek"):
+            file_obj.seek(0)
+        wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+    else:
+        wb = openpyxl.load_workbook(file_obj, read_only=True, data_only=True)
+    ws = wb.active
+    rows = []
+    for row in ws.iter_rows(values_only=True):
+        cells = []
+        for v in row:
+            if v is None:
+                cells.append("")
+            elif isinstance(v, float):
+                cells.append(repr(v))
+            else:
+                cells.append(str(v))
+        rows.append(cells)
+    wb.close()
+    return rows
+
+
 def read_rows(file_obj) -> list:
+    if _is_xlsx(file_obj):
+        return _read_xlsx_rows(file_obj)
     if hasattr(file_obj, "read"):
         content = file_obj.read()
         if isinstance(content, bytes):
@@ -25,7 +66,9 @@ def read_rows(file_obj) -> list:
     return list(csv.reader(lines))
 
 
-def safe_float(val: str):
+def safe_float(val):
+    if isinstance(val, (int, float)):
+        return float(val)
     try:
         v = val.strip()
         return float(v) if v else None
@@ -33,14 +76,14 @@ def safe_float(val: str):
         return None
 
 
-# ── 헤더 자동 감지 ────────────────────────────────────────────────────────────
+# ── 헤더 자동 감지 ────────────────────────────────────────────────────
 def detect_columns(rows: list, prefer: str = "area") -> tuple:
     """
-    Row 0 (화합물 헤더), Row 1 (서브헤더)를 스캔해
-    name_col 과 {compound: (rt_col, value_col)} 을 반환.
+    Row 0 (화합물 명), Row 1 (서브헤더)을 스캔해
+    name_col 및 {compound: (rt_col, value_col)} 를 반환.
 
-    prefer="area"  → Area 우선, 없으면 S/N (AS 함량용)
-    prefer="sn"    → S/N 우선, 없으면 Area (ID 확인용)
+    prefer="area"  -> Area 우선, 없으면 S/N (AS 입력용)
+    prefer="sn"    -> S/N 우선, 없으면 Area (ID 확인용)
     """
     if len(rows) < 2:
         return 0, {}
@@ -80,7 +123,7 @@ def detect_columns(rows: list, prefer: str = "area") -> tuple:
         if rt_col is None:
             continue
 
-        # prefer에 따라 value 컬럼 결정
+        # prefer에 따라 value 컬럼 선택
         if prefer == "area":
             val_col = area_col if area_col is not None else (sn_col if sn_col is not None else rt_col + 1)
         else:  # "sn"
@@ -91,7 +134,7 @@ def detect_columns(rows: list, prefer: str = "area") -> tuple:
     return name_col, compound_cols
 
 
-# ── 행 분류 ──────────────────────────────────────────────────────────────────
+# ── 런 분류 ────────────────────────────────────────────────────────────
 def classify(name: str) -> str:
     n = name.upper()
     if "SYSTEM" in n:     return "system_check"
@@ -100,10 +143,10 @@ def classify(name: str) -> str:
     return "sp"
 
 
-# ── 범용 CSV 파싱 ─────────────────────────────────────────────────────────────
+# ── 단일 파싱 ──────────────────────────────────────────────────────────
 def parse_csv(file_obj, prefer: str = "area") -> dict:
     """
-    범용 파싱. 반환:
+    단일 파싱. 반환:
     {
       compound: {
         "std":          [{"name","rt","area"}, ...],
@@ -142,11 +185,11 @@ def parse_csv(file_obj, prefer: str = "area") -> dict:
     return dict(result)
 
 
-# ── SP 런 lot 그룹핑 ──────────────────────────────────────────────────────────
+# ── SP 런 lot 그룹화 ────────────────────────────────────────────────────
 def group_by_lot(parsed: dict) -> dict:
     """
-    SP 런을 lot별·A/B 메서드별로 그룹핑.
-    샘플명 패턴: <LotName>_<A|B>-<num>  (예: BSHwan_26006_B-1)
+    SP 런을 lot명·A/B 메서드별로 그룹화.
+    이름 예시: <LotName>_<A|B>-<num>  (예: BSHwan_26006_B-1)
     반환: {lot_name: {"A": [{comp: area, ...}, ...], "B": [...]}}
     """
     run_map = {}
@@ -177,13 +220,11 @@ def group_by_lot(parsed: dict) -> dict:
     return lots
 
 
-# ── 여러 파일 병합 ────────────────────────────────────────────────────────────
+# ── 복수 파일 병합 ────────────────────────────────────────────────────
 def merge_parsed(file_list, prefer: str = "area") -> dict:
     """
-    여러 CSV 파일(또는 파일 객체 리스트)을 각각 파싱한 뒤 결과를 병합.
-    파일이 1개면 그냥 parse_csv 결과를 반환.
+    복수 CSV/Excel 파일(또는 파일 객체 리스트)을 모두 파싱한 뒤 결과를 합침.
     """
-    from collections import defaultdict
     merged = defaultdict(lambda: {"std": [], "sp": [], "stability": [], "system_check": []})
     for f in file_list:
         partial = parse_csv(f, prefer=prefer)
@@ -193,7 +234,7 @@ def merge_parsed(file_list, prefer: str = "area") -> dict:
     return dict(merged)
 
 
-# ── STD 통계 ─────────────────────────────────────────────────────────────────
+# ── STD 통계 계산 ────────────────────────────────────────────────────
 def get_stats(compound_data: dict) -> dict:
     """STD 런 통계 (평균·표준편차·%RSD)"""
     std_rows = compound_data.get("std", [])

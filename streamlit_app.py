@@ -289,8 +289,8 @@ if product == "아미노산":
 elif product == "공진단":
     st.subheader(f"③ CSV 파일 업로드  〔공진단 {test_type}〕")
     st.caption("STD / SP-A / SP-B (/ SP-C) CSV 파일을 한 번에 선택하세요 — 파일명으로 자동 분류")
-    uploaded = st.file_uploader("CSV 파일 선택 (복수 선택 가능)",
-                                type="csv", accept_multiple_files=True, key="gj_csv")
+    uploaded = st.file_uploader("CSV / Excel 파일 선택 (복수 선택 가능)",
+                                type=["csv", "xlsx"], accept_multiple_files=True, key="gj_csv")
 
     def _classify_gj(files):
         std_f, spa_f, spb_f = [], [], []
