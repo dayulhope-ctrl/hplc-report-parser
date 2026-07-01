@@ -235,6 +235,7 @@ def _write_result_group(ws, row, group_names, parsed):
                 comp_data = _lookup_trans(parsed, gname, trans)
                 sp_list = comp_data.get("sp", [])
                 val = sp_list[run_idx].get("area") if run_idx < len(sp_list) else None
+                if val is not None: val = round(val, 3)
                 _cell(ws, row, col, val, fill=YELLOW, num_fmt="0.000")
         row += 1
 
