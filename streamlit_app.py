@@ -329,7 +329,7 @@ elif test_type == "확인":
     st.subheader(f"③ CSV 파일 업로드  〔우황청심원 {product} 확인〕")
     st.caption("SST / SP_A / SP_B / SP_C 파일을 한 번에 선택하세요 (파일명에 SST, SP_A, SP_B, SP_C 포함)")
     uploaded = st.file_uploader("CSV 파일 선택 (복수 선택 가능)",
-                                type="csv", accept_multiple_files=True,
+                                type=["csv", "xlsx"], accept_multiple_files=True,
                                 key="id_csv_multi")
     sst_file = spa_file = spb_file = spc_file = None
     for f in (uploaded or []):
