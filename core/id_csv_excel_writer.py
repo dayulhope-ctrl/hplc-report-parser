@@ -389,8 +389,8 @@ def _write_compound_block(ws, row, trans_list, all_trans, ref_rts=None, ref_rrt=
         _c(ws, row, col+1, "",                      fill=BLUE_H)
         _merge(ws, row, col, row, col + 1)
     if show_rrt:
-        _c(ws, row, rrt_col,   "RRT",    fill=BLUE_H, bold=True)
-        _c(ws, row, rrt_col+1, "기준RRT", fill=BLUE_H, bold=True)
+        _c(ws, row, rrt_col,   "기준RRT", fill=BLUE_H, bold=True)
+        _c(ws, row, rrt_col+1, "RRT",    fill=BLUE_H, bold=True)
         _c(ws, row, rrt_col+2, "판정",   fill=BLUE_H, bold=True)
     row += 1
 
@@ -424,8 +424,8 @@ def _write_compound_block(ws, row, trans_list, all_trans, ref_rts=None, ref_rrt=
                 판정 = "적합" if ok else "부적합"
             else:
                 rrt_fill, 판정 = GRAY, ""
-            _c(ws, row, rrt_col,   rrt,     fill=YELLOW, num_fmt="0.000")
-            _c(ws, row, rrt_col+1, ref_rrt, fill=GRAY,   num_fmt="0.0##")
+            _c(ws, row, rrt_col,   ref_rrt, fill=GRAY,   num_fmt="0.0##")
+            _c(ws, row, rrt_col+1, rrt,     fill=YELLOW, num_fmt="0.000")
             _c(ws, row, rrt_col+2, 판정,   fill=rrt_fill, bold=True)
         row += 1
 
