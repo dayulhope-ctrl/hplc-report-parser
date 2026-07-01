@@ -413,7 +413,7 @@ def _write_compound_block(ws, row, trans_list, all_trans, ref_rts=None, ref_rrt=
             col = cs + i * 2
             s = sample_map.get(t["name"], {})
             _c(ws, row, col,   s.get("rt"), fill=YELLOW, num_fmt="0.000")
-            _c(ws, row, col+1, s.get("sn"), fill=YELLOW, num_fmt="0.00")
+            _c(ws, row, col+1, s.get("sn"), fill=YELLOW, num_fmt="0.000")
             if i == 0: first_rt = s.get("rt")
         if show_rrt:
             _ref = ref_rts[s_idx] if s_idx < len(ref_rts) else None
