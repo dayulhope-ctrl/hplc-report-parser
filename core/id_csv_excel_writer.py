@@ -309,7 +309,7 @@ def _write_sst_section(ws, row, sst_data):
         _c(ws, row, SST_LABEL_COL, idx, fill=WHITE, fs=FS_SST)
         for i, name in enumerate(comp_names):
             rt = row_data.get(name, {}).get("rt")
-            _c(ws, row, SST_DATA_COL + i, rt, fill=YELLOW, num_fmt="0.000", fs=FS_SST)
+            _c(ws, row, SST_DATA_COL + i, (round(rt, 3) if rt is not None else None), fill=YELLOW, num_fmt="0.000", fs=FS_SST)
         row += 1
     data_end = row - 1
 
@@ -412,7 +412,7 @@ def _write_compound_block(ws, row, trans_list, all_trans, ref_rts=None, ref_rrt=
         for i, t in enumerate(trans_list):
             col = cs + i * 2
             s = sample_map.get(t["name"], {})
-            _c(ws, row, col,   s.get("rt"), fill=YELLOW, num_fmt="0.000")
+            _c(ws, row, col,   (round(s.get("rt"), 3) if s.get("rt") is not None else None), fill=YELLOW, num_fmt="0.000")
             _c(ws, row, col+1, (round(s.get("sn"), 3) if s.get("sn") is not None else None), fill=YELLOW, num_fmt="0.000")
             if i == 0: first_rt = s.get("rt")
         if show_rrt:

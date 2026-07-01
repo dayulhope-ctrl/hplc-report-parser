@@ -149,6 +149,7 @@ def _write_sst_group(ws, row, group_names, parsed):
                 comp_data = _lookup_trans(parsed, gname, trans)
                 rt_vals = [r.get("rt") for r in comp_data.get("std", [])]
                 rt = rt_vals[run_idx] if run_idx < len(rt_vals) else None
+                if rt is not None: rt = round(rt, 3)
                 _cell(ws, row, col, rt, fill=YELLOW, num_fmt="0.000")
         row += 1
     data_row_end = row - 1
