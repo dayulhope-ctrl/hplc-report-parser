@@ -354,7 +354,7 @@ elif test_type == "함량":
     st.subheader(f"③ CSV 파일 업로드  〔우황청심원 {product} 함량〕")
     st.caption("통합 CSV 1개 또는 분리된 CSV 여러 개를 한 번에 선택하세요")
     as_files = st.file_uploader("AS 데이터 CSV (복수 선택 가능)",
-                                type=["csv"], accept_multiple_files=True, key="as_csv")
+                                type=["csv", "xlsx"], accept_multiple_files=True, key="as_csv")
     if as_files:
         for f in as_files:
             st.caption(f"✓ {f.name}")
