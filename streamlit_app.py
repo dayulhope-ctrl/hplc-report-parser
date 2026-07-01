@@ -334,7 +334,7 @@ elif test_type == "확인":
     sst_file = spa_file = spb_file = spc_file = None
     for f in (uploaded or []):
         n = f.name.upper()
-        if "SST"  in n: sst_file = f
+        if "SST" in n or "STD" in n: sst_file = f
         elif "SP_A" in n or "SPA" in n: spa_file = f
         elif "SP_B" in n or "SPB" in n: spb_file = f
         elif "SP_C" in n or "SPC" in n: spc_file = f
