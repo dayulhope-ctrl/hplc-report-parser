@@ -140,6 +140,7 @@ def classify(name: str) -> str:
     if "SYSTEM" in n:     return "system_check"
     if "STABILITY" in n:  return "stability"
     if "STD" in n:        return "std"
+    if "SST" in n:        return "std"
     return "sp"
 
 
