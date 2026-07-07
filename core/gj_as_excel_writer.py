@@ -123,12 +123,13 @@ def _sum_areas(base_data, extra_candidates, parsed, section):
 def _sum_sp_lots(base_data, extra_candidates, parsed, method):
     """SP lot 그룹화 시 extra 화합물 area를 합산."""
     def _filter(runs, m):
-        return [r for r in runs if f"_{m}-" in r.get("name", "")]
+        needle = f"_{m}-".lower()
+        return [r for r in runs if needle in r.get("name", "").lower()]
 
     def _group(runs):
         lots = {}
         for r in runs:
-            m = re.search(r"^(.+?)_([AB])-(\d+)$", r.get("name", ""))
+            m = re.search(r"^(.+?)_([ABab])-(\d+)$", r.get("name", ""))
             if m:
                 lot, rn = m.group(1), int(m.group(3))
                 lots.setdefault(lot, {})[rn] = r
@@ -209,12 +210,13 @@ def _build_sheet(ws, comp_name, method, csv_candidates, extra_candidates, parsed
     is_sp_all = is_data.get("sp", [])
 
     def _filter(runs, m):
-        return [r for r in runs if f"_{m}-" in r.get("name", "")]
+        needle = f"_{m}-".lower()
+        return [r for r in runs if needle in r.get("name", "").lower()]
 
     def _group(runs):
         lots = {}
         for r in runs:
-            m = re.search(r"^(.+?)_([AB])-(\d+)$", r.get("name", ""))
+            m = re.search(r"^(.+?)_([ABab])-(\d+)$", r.get("name", ""))
             if m:
                 lot, rn = m.group(1), int(m.group(3))
                 lots.setdefault(lot, {})[rn] = r.get("area")
