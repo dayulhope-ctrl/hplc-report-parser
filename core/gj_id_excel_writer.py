@@ -36,6 +36,12 @@ COMPOUNDS = {
                           ["Decursin angelate (329.1 -> 247.2)", "Decursin Angelate", "Decursin angelate"]),
 }
 
+# SST(시스템적합성) 섹션 전용 transition 순서 (정량 transition을 맨 앞)
+SST_TRANS_ORDER = {
+    "Morroniside": ["465.3 -> 243.2", "465.3 -> 141.1", "465.3 -> 155.0"],
+    "Loganin":     ["449.2 -> 227.0", "449.2 -> 101.0", "449.2 -> 127.0"],
+}
+
 SST_GROUP1    = ["Morroniside", "Loganin", "Nodakenin"]
 SST_GROUP2    = ["Ginsenoside Rg1", "Ginsenoside Rb1", "Decursin"]
 RESULT_GROUP1 = ["Ginsenoside Rg1", "Ginsenoside Rb1", "Morroniside"]
@@ -125,7 +131,7 @@ def _write_sst_group(ws, row, group_names, parsed):
     # 헤더
     _cell(ws, row, LABEL_COL, "구분", fill=BLUE_H, bold=True)
     for gi, gname in enumerate(group_names):
-        transitions, _ = COMPOUNDS[gname]
+        transitions = SST_TRANS_ORDER.get(gname, COMPOUNDS[gname][0])
         for ti, trans in enumerate(transitions):
             col = data_start_col + gi * N_TRANS + ti
             label = f"{gname}\n({trans}) Results"
@@ -143,7 +149,7 @@ def _write_sst_group(ws, row, group_names, parsed):
     for run_idx in range(6):
         _cell(ws, row, LABEL_COL, run_idx + 1, fill=WHITE)
         for gi, gname in enumerate(group_names):
-            transitions, _ = COMPOUNDS[gname]
+            transitions = SST_TRANS_ORDER.get(gname, COMPOUNDS[gname][0])
             for ti, trans in enumerate(transitions):
                 col = data_start_col + gi * N_TRANS + ti
                 comp_data = _lookup_trans(parsed, gname, trans)
