@@ -161,10 +161,10 @@ def _run_amino_acid(std_files, sp_files):
                 st.error(f"검액 파싱 오류 ({f.name}): {e}"); return
 
     if not all_lots:
-        st.error("검액 PDF에서 데이터를 추출하지 못했습니다."); return
-
-    lot_names = sorted(all_lots.keys())
-    st.success(f"검액 Lot: {', '.join(lot_names)}")
+        st.warning("검액 PDF에서 검출된 피크가 없습니다 (CV 등 미검출 시료 — 정상). STD 결과만 생성합니다.")
+    else:
+        lot_names = sorted(all_lots.keys())
+        st.success(f"검액 Lot: {', '.join(lot_names)}")
 
     with st.spinner("엑셀 생성 중..."):
         excel_bytes = write_aa_result(all_runs, all_res, all_lots)
