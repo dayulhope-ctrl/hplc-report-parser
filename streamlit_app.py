@@ -267,7 +267,7 @@ test_type = st.session_state.test_type
 
 if product == "아미노산":
     st.subheader("② PDF 파일 업로드  〔아미노산 함량〕")
-    st.caption("STD PDF + 검액 PDF(Lot별)를 한 번에 선택하세요 — 파일명에 STD 포함 여부로 자동 분류")
+    st.caption("STD PDF + 검액 PDF(Lot별)를 선택하세요. STD·검액 통합 써머리 1개도 가능 — 각 파일에서 STD/검액을 자동 추출합니다.")
     uploaded_aa = st.file_uploader("PDF 파일 선택 (복수 선택 가능)",
                                    type="pdf", accept_multiple_files=True, key="aa_multi")
     std_files = [f for f in (uploaded_aa or []) if "STD" in f.name.upper()]
@@ -283,8 +283,8 @@ if product == "아미노산":
             for f in sp_files: st.success(f"✓ {f.name}")
             if not sp_files: st.warning("검액 파일 없음")
     if st.button("▶  분석 실행", type="primary",
-                 disabled=not(std_files and sp_files), use_container_width=True):
-        _run_amino_acid(std_files, sp_files)
+                 disabled=not uploaded_aa, use_container_width=True):
+        _run_amino_acid(uploaded_aa or [], uploaded_aa or [])
 
 elif product == "공진단":
     st.subheader(f"③ CSV 파일 업로드  〔공진단 {test_type}〕")
