@@ -33,33 +33,67 @@ def _extract_text(file_obj) -> str:
         return "\n".join(page.extract_text() or "" for page in pdf.pages)
 
 
+def _to_float(tok: str):
+    try:
+        return float(tok)
+    except (ValueError, TypeError):
+        return None
+
+
 def _parse_data_line(line: str):
     """
-    크로마토그램 데이터 라인 파싱.
-    형식: peak_no  signal  rt  area  height  area%  compound_name  [resolution]  symmetry
+    크로마토그램 데이터 라인 파싱 (양식 독립적).
+
+    ClarityAmino 리포트 양식이 수시로 바뀌어 컬럼 순서가 제각각이므로
+    위치(index) 대신 값의 특성으로 파싱한다:
+      1) 화합물명은 COMPOUND_MAP에서 탐색 (가장 긴 매칭 우선)
+      2) 면적(Area/Response)은 라인 내 최대 수치 (peak area가 항상 가장 큼)
+      3) 분리도(Resolution)는 화합물명 위치·주변 수치 배치로 추정
+         - 화합물 앞에 큰 수치(>100)가 있으면(면적-먼저/Response-먼저 양식):
+           화합물 뒤 첫 숫자 = Resolution (숫자 2개 이상일 때만)
+         - 화합물 앞에 큰 수치가 없으면(화합물-먼저 양식):
+           화합물 뒤 마지막 숫자 = Resolution (숫자 4개 이상일 때만)
     반환: (aa_name, area, resolution) 또는 None
     """
+    # 가장 긴 화합물명 우선 매칭 (부분 매칭 방지)
+    matched = None
     for eng_name, kor_name in COMPOUND_MAP.items():
-        if eng_name not in line:
-            continue
-        tokens = line.split()
-        try:
-            area = float(tokens[3])
-        except (IndexError, ValueError):
-            return None
+        if eng_name in line and (matched is None or len(eng_name) > len(matched[0])):
+            matched = (eng_name, kor_name)
+    if not matched:
+        return None
+    eng_name, kor_name = matched
 
-        name_tokens = eng_name.split()
-        for i in range(len(tokens) - len(name_tokens) + 1):
-            if tokens[i: i + len(name_tokens)] == name_tokens:
-                after = tokens[i + len(name_tokens):]
-                # 뒤에 숫자가 2개 이상 → 첫 번째가 Resolution, 그 다음이 Symmetry
-                # 숫자가 1개만   → Symmetry만 (Resolution = N/A)
-                try:
-                    resolution = float(after[0]) if len(after) >= 2 else None
-                except ValueError:
-                    resolution = None
-                return (kor_name, area, resolution)
-    return None
+    tokens = line.split()
+    nums = [v for v in (_to_float(t) for t in tokens) if v is not None]
+    if len(nums) < 2:
+        return None
+
+    # 면적: 라인 내 최대 수치 (peak area/response가 항상 최대)
+    area = max(nums)
+
+    # 화합물명 토큰 위치
+    name_tokens = eng_name.split()
+    comp_idx = None
+    for i in range(len(tokens) - len(name_tokens) + 1):
+        if tokens[i: i + len(name_tokens)] == name_tokens:
+            comp_idx = i
+            break
+    if comp_idx is None:
+        return (kor_name, area, None)
+
+    before_nums = [v for v in (_to_float(t) for t in tokens[:comp_idx]) if v is not None]
+    after_nums  = [v for v in (_to_float(t) for t in tokens[comp_idx + len(name_tokens):]) if v is not None]
+
+    big_before = any(v > 100 for v in before_nums)
+    if big_before:
+        # 면적/Response가 화합물 앞 → 뒤엔 [Resolution, Symmetry] 또는 [Symmetry]
+        resolution = after_nums[0] if len(after_nums) >= 2 else None
+    else:
+        # 화합물-먼저 양식 → 뒤엔 [Response, Area%, Symmetry, (Resolution)]
+        resolution = after_nums[-1] if len(after_nums) >= 4 else None
+
+    return (kor_name, area, resolution)
 
 
 def _table_sample_id(block_head: str) -> str | None:
