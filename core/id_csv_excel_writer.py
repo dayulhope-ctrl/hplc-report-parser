@@ -193,6 +193,30 @@ REFERENCE_COMPOUND = {
     "현탁제": "Ginsenoside_Rg1",
 }
 
+# ── SST(시스템적합성) 화합물 표시 순서 (ELN 템플릿 기준) ────────────────
+SST_ORDER = {
+    "환제":   ["Amygdalin", "Ginsenoside Rb1", "6-Gingerol"],
+    "현탁제": ["Amygdalin", "Ginsenoside Rg1", "6-Gingerol"],
+}
+
+
+def _reorder_sst_names(comp_names, form_type):
+    """SST 화합물명을 ELN 순서로 재정렬. 목록에 없는 건 뒤에 원래 순서 유지."""
+    order = SST_ORDER.get(form_type)
+    if not order:
+        return comp_names
+    def _norm(s):
+        return re.sub(r'[ _-]', '', s).lower()
+    order_norm = [_norm(o) for o in order]
+    def _key(name):
+        n = _norm(name)
+        for idx, o in enumerate(order_norm):
+            if o in n or n in o:
+                return idx
+        return len(order_norm)
+    return sorted(comp_names, key=_key)
+
+
 def _build_sheet(wb, ws_title, sst_data, sp_files, lot_idx, compound_order, form_type=None):
     """lot_idx번째 샘플 데이터로 시트 1장 생성."""
     ws = wb.create_sheet(title=ws_title[:31])
@@ -219,7 +243,7 @@ def _build_sheet(wb, ws_title, sst_data, sp_files, lot_idx, compound_order, form
     last_col = cs + N_TRANS * 2 - 1 + (3 if show_rrt else 0)
 
     if sst_data:
-        row = _write_sst_section(ws, row, sst_data)
+        row = _write_sst_section(ws, row, sst_data, form_type=form_type)
         row += 1
 
     _title_bar(ws, row, "● Value", cs, cs + 5)
@@ -288,8 +312,9 @@ def write_id_csv_result(sst_data: dict,
 
 
 # ── SST 섹션 (RT만, 번호행 1·2·3 + 통계 + 판정) ─────────────────
-def _write_sst_section(ws, row, sst_data):
+def _write_sst_section(ws, row, sst_data, form_type=None):
     comp_names = sst_data.get("compound_names", [])
+    comp_names = _reorder_sst_names(comp_names, form_type)
     n          = len(comp_names)
     last_col   = SST_LABEL_COL + n   # 구분(1) + 화합물 수
 
