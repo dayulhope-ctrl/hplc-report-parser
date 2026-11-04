@@ -203,11 +203,12 @@ def group_by_lot(parsed: dict) -> dict:
 
     lots = {}
     for run_name, run_data in run_map.items():
-        m = re.search(r'^(.+?)_([AB])-(\d+)$', run_name)
+        # 메서드-런 구분자는 하이픈/언더바/없음 모두 허용: _B-1, _B_1, _A1 …
+        m = re.search(r'^(.+?)_([ABab])[-_]?(\d+)$', run_name)
         if not m:
             continue
         lot_name = m.group(1)
-        method   = m.group(2)
+        method   = m.group(2).upper()
         run_num  = int(m.group(3))
 
         if lot_name not in lots:
