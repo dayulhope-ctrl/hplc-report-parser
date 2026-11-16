@@ -133,12 +133,15 @@ def _run_amino_acid(std_files, sp_files):
     from core.aa_excel_writer import write_aa_result
 
     all_runs, all_res = [], []
+    std_only_files = set()   # STD 데이터만 들어있는 파일 (검액 디버그 생략용)
     with st.spinner("STD PDF 파싱 중..."):
         for f in std_files:
             try:
                 runs, ress = parse_std(f)
                 all_runs.extend(runs)
                 all_res.extend(ress)
+                if runs:
+                    std_only_files.add(f.name)
             except Exception as e:
                 st.error(f"STD 파싱 오류 ({f.name}): {e}"); return
 
@@ -154,7 +157,8 @@ def _run_amino_acid(std_files, sp_files):
                 lots, dbg = parse_sp(f, debug=True)
                 for lot_id, lot_data in lots.items():
                     all_lots.setdefault(lot_id, {}).update(lot_data)
-                if not lots:
+                # STD 전용 파일은 검액 Lot이 없는 게 정상 → 디버그 생략
+                if not lots and f.name not in std_only_files:
                     with st.expander(f"🔍 파싱 디버그 ({f.name})", expanded=True):
                         st.code("\n".join(dbg) if dbg else "(블록 없음)")
             except Exception as e:
