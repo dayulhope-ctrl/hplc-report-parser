@@ -25,6 +25,7 @@ FILL_GRAY   = PatternFill("solid", fgColor="D9D9D9")   # 행 레이블
 FILL_DATA   = PatternFill("solid", fgColor="FFFFE1")   # 데이터 셀 (연노랑)
 FILL_PASS   = PatternFill("solid", fgColor="C6EFCE")   # 적합 (초록)
 FILL_FAIL   = PatternFill("solid", fgColor="FFC7CE")   # 부적합 (빨강)
+FILL_AVG    = PatternFill("solid", fgColor="FCE4D6")   # 평균 (연주황 — 데이터와 구분)
 
 # ── 테두리 ────────────────────────────────────────────────────────
 _T = Side(style="thin")
@@ -171,7 +172,7 @@ def _write_std_group(ws, start_row: int, group_aas: list, runs: list) -> int:
         c1 = 2 + i * 2
         vals = [run[aa] for run in runs if aa in run]
         avg  = round(sum(vals) / len(vals), 3) if vals else ""
-        _twin(ws, avg_r, c1, c1 + 1, avg, FN_DATA, fill=FILL_DATA)
+        _twin(ws, avg_r, c1, c1 + 1, avg, FN_DATA, fill=FILL_AVG)
 
     rsd_r = start_row + 8
     _c(ws, rsd_r, 1, "%RSD", fill=FILL_GRAY, bold=True)
