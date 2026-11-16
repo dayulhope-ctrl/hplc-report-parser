@@ -47,7 +47,9 @@ def _parse_data_line(line: str):
     ClarityAmino 리포트 양식이 수시로 바뀌어 컬럼 순서가 제각각이므로
     위치(index) 대신 값의 특성으로 파싱한다:
       1) 화합물명은 COMPOUND_MAP에서 탐색 (가장 긴 매칭 우선)
-      2) 면적(Area/Response)은 라인 내 최대 수치 (peak area가 항상 가장 큼)
+      2) 면적(Area/Response)은 RT 바로 다음에 오는 첫 번째 수치
+         (화합물명 텍스트는 건너뜀). 최댓값을 쓰면 Proline처럼
+         Area%(100.0)가 실제 면적보다 큰 희석 검액에서 틀리므로 사용 안 함.
       3) 분리도(Resolution)는 화합물명 위치·주변 수치 배치로 추정
          - 화합물 앞에 큰 수치(>100)가 있으면(면적-먼저/Response-먼저 양식):
            화합물 뒤 첫 숫자 = Resolution (숫자 2개 이상일 때만)
@@ -69,8 +71,17 @@ def _parse_data_line(line: str):
     if len(nums) < 2:
         return None
 
-    # 면적: 라인 내 최대 수치 (peak area/response가 항상 최대)
-    area = max(nums)
+    # 면적: signal(\d+nm) → RT → 그 다음 첫 번째 수치 (화합물명 텍스트는 건너뜀)
+    sig_idx = next((i for i, t in enumerate(tokens) if re.match(r'^\d+nm$', t)), None)
+    area = None
+    if sig_idx is not None:
+        rt_idx = next((i for i in range(sig_idx + 1, len(tokens))
+                       if _to_float(tokens[i]) is not None), None)
+        if rt_idx is not None:
+            area = next((_to_float(tokens[i]) for i in range(rt_idx + 1, len(tokens))
+                         if _to_float(tokens[i]) is not None), None)
+    if area is None:
+        area = max(nums)   # signal 토큰이 없는 예외적 양식 대비
 
     # 화합물명 토큰 위치
     name_tokens = eng_name.split()
